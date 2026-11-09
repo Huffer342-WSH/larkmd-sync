@@ -100,7 +100,7 @@ def test_skill_install_requires_explicit_dry_run_for_preview(
 def test_json_validation_failure_stays_on_stdout(tmp_path: Path, capsys) -> None:
     markdown = tmp_path / "test.md"
     markdown.write_text("# Test\n", encoding="utf-8")
-    assert main(["--json", "push", str(markdown)]) == 2
+    assert main(["--json", "--lark-cli", "unused-lark-cli", "push", str(markdown)]) == 2
 
     captured = capsys.readouterr()
     value = json.loads(captured.out)

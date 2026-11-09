@@ -2,8 +2,8 @@
 name: larkmd-sync
 description: 在本地 Markdown 与飞书/Lark 文档之间同步正文、本地图片、Mermaid 画板和高亮块，支持单文档与 Wiki 子文档的显式拉取、比较和推送。用户要保留可直接浏览的 Markdown、只用根 Wiki URL 映射无 URL 子文档或同步文档树时使用；只读/直接编辑云文档、管理 Wiki 节点、直接编辑原生画板、附件、电子表格或多维表格时不使用。
 metadata:
-  skill-version: "1.0.0"
-  cli-min-version: "1.0.0"
+  skill-version: "1.0.1"
+  cli-min-version: "1.0.1"
 ---
 
 # larkmd-sync

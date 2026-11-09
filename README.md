@@ -48,7 +48,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 也可以指定版本安装，或在仓库根目录用 `uv tool install .` 从源码安装：
 
 ```bash
-uv tool install https://github.com/Huffer342-WSH/larkmd-sync/releases/download/v1.0.0/larkmd_sync-1.0.0-py3-none-any.whl
+uv tool install https://github.com/Huffer342-WSH/larkmd-sync/releases/download/v1.0.1/larkmd_sync-1.0.1-py3-none-any.whl
 ```
 
 使用同步功能前，需要 Node.js/npm，以及已安装、登录的官方飞书 CLI：
@@ -160,8 +160,8 @@ push_preview = push_file("./docs/design.md")
 将包、Python API、锁文件和内置 Skill 版本保持一致，然后创建并推送标签：
 
 ```bash
-git tag -a v1.0.0 -m 'Release 1.0.0'
-git push origin v1.0.0
+git tag -a v1.0.1 -m 'Release 1.0.1'
+git push origin v1.0.1
 ```
 
 [发布流程](.github/workflows/release.yml) 在推送 `v*` 标签时触发，只接受 `vMAJOR.MINOR.PATCH`。CI 检查版本一致性、锁文件、Ruff 和离线测试，并构建 wheel、sdist；检查 Skill 资源完整性后，在独立 Python 3.10 环境安装 wheel 并验证 Skill 安装。

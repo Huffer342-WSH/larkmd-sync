@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "larkmd-sync"
-version = "1.0.0"
+version = "1.0.1"
 description = "Agent-friendly Markdown synchronization for Lark and Feishu documents"
 readme = "README.md"
 requires-python = ">=3.10"
