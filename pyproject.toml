@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "larkmd-sync"
+version = "1.0.0"
+description = "Agent-friendly Markdown synchronization for Lark and Feishu documents"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["PyYAML>=6.0"]
+
+[project.scripts]
+larkmd-sync = "larkmd_sync.cli:main"
+
+[dependency-groups]
+dev = ["build>=1.2", "pytest>=8.0", "ruff>=0.12"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["larkmd_sync*"]
+
+[tool.setuptools.package-data]
+larkmd_sync = ["skills/**/*.md", "skills/**/scripts/*.py"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
