@@ -31,10 +31,31 @@
 
 ## 安装
 
-要求 Python 3.10 及以上，并提前安装、登录官方 `lark-cli`：
+推荐在 Linux/macOS 上通过安装脚本获取最新正式 Release，无需克隆仓库，也不需要 jq：
 
 ```bash
-uv tool install .
+curl -fsSL https://raw.githubusercontent.com/Huffer342-WSH/larkmd-sync/main/install.sh | sh
+```
+
+脚本检查 uv，缺少时提示安装并退出，不自动安装 uv。按照 [uv 官方安装说明](https://docs.astral.sh/uv/getting-started/installation/) 安装后重新打开终端，再运行上面的命令：
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+脚本从 GitHub 最新正式 Release 下载对应 wheel，由 uv 安装或升级 CLI，并选择 Python 3.10 及以上环境。再次运行即可更新；不会自动安装 Agent Skill 或登录飞书。若找不到命令，执行 `uv tool update-shell` 后重新打开终端。
+
+也可以指定版本安装，或在仓库根目录用 `uv tool install .` 从源码安装：
+
+```bash
+uv tool install https://github.com/Huffer342-WSH/larkmd-sync/releases/download/v1.0.0/larkmd_sync-1.0.0-py3-none-any.whl
+```
+
+使用同步功能前，需要 Node.js/npm，以及已安装、登录的官方飞书 CLI：
+
+```bash
+npm install -g @larksuite/cli
+lark-cli auth login
 lark-cli auth status
 larkmd-sync --version
 ```

@@ -364,7 +364,7 @@ def test_explicit_url_must_match_front_matter(tmp_path: Path) -> None:
 def test_remote_cloud_feature_is_reported_without_sidecar(tmp_path: Path) -> None:
     target = tmp_path / "document.md"
     target.write_text(f"---\nfeishu_url: {URL}\n---\n\n# Test\n", encoding="utf-8")
-    remote = _markdown(content='# Test\n\n<whiteboard token="board123"></whiteboard>\n')
+    remote = _markdown(content='# Test\n\n<synced-source token="source123"></synced-source>\n')
     with (
         patch("larkmd_sync.sync.fetch_markdown", return_value=remote),
         patch("larkmd_sync.sync.overwrite_doc") as overwrite,
