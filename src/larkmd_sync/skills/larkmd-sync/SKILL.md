@@ -2,8 +2,8 @@
 name: larkmd-sync
 description: 使用 CLI 在本地 Markdown 与飞书/Lark 文档之间拉取、比较和推送，支持图片、画板及 Wiki 文档树。适用于维护本地与云端副本；仅阅读云文档、管理 Wiki 节点或权限、操作 Sheet/Base 时不使用。
 metadata:
-  skill-version: "1.0.1"
-  cli-min-version: "1.0.1"
+  skill-version: "2.0.0"
+  cli-min-version: "2.0.0"
 ---
 
 # larkmd-sync

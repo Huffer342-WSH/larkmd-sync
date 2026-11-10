@@ -48,7 +48,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 也可以指定版本安装，或在仓库根目录用 `uv tool install .` 从源码安装：
 
 ```bash
-uv tool install https://github.com/Huffer342-WSH/larkmd-sync/releases/download/v1.0.1/larkmd_sync-1.0.1-py3-none-any.whl
+uv tool install https://github.com/Huffer342-WSH/larkmd-sync/releases/download/v2.0.0/larkmd_sync-2.0.0-py3-none-any.whl
 ```
 
 使用同步功能前，需要 Node.js/npm，以及已安装、登录的官方飞书 CLI：
@@ -76,6 +76,8 @@ export LARK_BASE_URL=https://tenant.feishu.cn
 ```
 
 ## CLI
+
+从 1.x 升级到 2.0：同步命令和 Python API 默认直接执行。原先仅用于预览的调用必须增加 `--dry-run` / `dry_run=True`；删除旧命令中的 `--no-input`，并更新配套 Skill。
 
 Agent 调用统一添加 `--json`。stdout 只输出一个 schema `1` JSON，诊断信息写入 stderr。
 
@@ -143,8 +145,8 @@ preview = push_file("./docs/design.md", dry_run=True)
 将包、Python API、锁文件和内置 Skill 版本保持一致，然后创建并推送标签：
 
 ```bash
-git tag -a v1.0.1 -m 'Release 1.0.1'
-git push origin v1.0.1
+git tag -a v2.0.0 -m 'Release 2.0.0'
+git push origin v2.0.0
 ```
 
 [发布流程](.github/workflows/release.yml) 在推送 `v*` 标签时触发，只接受 `vMAJOR.MINOR.PATCH`。CI 检查版本一致性、锁文件、Ruff 和离线测试，并构建 wheel、sdist；检查 Skill 资源完整性后，在独立 Python 3.10 环境安装 wheel 并验证 Skill 安装。
