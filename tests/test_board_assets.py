@@ -230,7 +230,7 @@ def test_preserving_rewrite_deletes_list_items_not_virtual_container(monkeypatch
     board_sync.rewrite_keeping_boards("cli", "doc", "new", [],
         '<title id="D">T</title><ul><li id="L1">one</li><li id="L2">two</li></ul>',
         identity="user")
-    assert [k["block_id"] for a,k in calls if a[2] == "block_delete"] == ["L2", "L1"]
+    assert [k["block_id"] for a,k in calls if a[2] == "block_delete"] == ["L2,L1"]
 
 
 def test_preserving_rewrite_does_not_append_document_title(monkeypatch):
@@ -482,3 +482,52 @@ def test_remote_change_refreshes_svg_and_metadata(tmp_path, monkeypatch):
     assert path.read_bytes() == remote_svg
     assert load_board(path).digest == nodes_hash(changed)
     assert 'nodes' not in json.loads(path.with_suffix('.json').read_text())
+
+
+@pytest.mark.parametrize('remaining,expected_calls', [([], ['A,B']), (['B'], ['A,B', 'B'])])
+def test_delete_failure_rechecks_remote_before_retry(monkeypatch, remaining, expected_calls):
+    from larkmd_sync import board_sync
+    calls = []
+
+    def update(*a, **k):
+        calls.append(k['block_id'])
+        if len(calls) == 1:
+            raise board_sync.LarkCliError('Something went wrong')
+
+    monkeypatch.setattr(board_sync, '_update', update)
+    monkeypatch.setattr(board_sync, 'fetch_document_xml', lambda *a, **k:
+        ''.join(f'<p id="{i}">old</p>' for i in remaining) + '<p id="NEW">new</p><whiteboard id="KEEP" token="T"/>')
+    monkeypatch.setattr(board_sync.time, 'sleep', lambda _: None)
+    board_sync._delete_blocks('cli', 'D', ['A', 'B'], identity='user')
+    assert calls == expected_calls
+
+
+def test_delete_validation_failure_is_not_retried(monkeypatch):
+    from larkmd_sync import board_sync
+    calls = []
+
+    def update(*a, **k):
+        calls.append(k['block_id'])
+        raise board_sync.LarkCliError('field validation failed')
+
+    monkeypatch.setattr(board_sync, '_update', update)
+    monkeypatch.setattr(board_sync, 'fetch_document_xml', lambda *a, **k: '<p id="A">old</p>')
+    with pytest.raises(board_sync.LarkCliError, match='仍存在的块：A'):
+        board_sync._delete_blocks('cli', 'D', ['A'], identity='user')
+    assert calls == ['A']
+
+
+def test_delete_transient_failure_has_bounded_retries(monkeypatch):
+    from larkmd_sync import board_sync
+    calls = []
+
+    def update(*a, **k):
+        calls.append(k['block_id'])
+        raise board_sync.LarkCliError('server internal error')
+
+    monkeypatch.setattr(board_sync, '_update', update)
+    monkeypatch.setattr(board_sync, 'fetch_document_xml', lambda *a, **k: '<p id="A">old</p>')
+    monkeypatch.setattr(board_sync.time, 'sleep', lambda _: None)
+    with pytest.raises(board_sync.LarkCliError, match='仍存在的块：A'):
+        board_sync._delete_blocks('cli', 'D', ['A'], identity='user')
+    assert calls == ['A'] * 3

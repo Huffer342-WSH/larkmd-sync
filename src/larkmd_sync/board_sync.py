@@ -19,6 +19,7 @@ from .lark_cli import (
     export_whiteboard_source,
     export_whiteboard_svg,
     fetch_document_xml,
+    is_transient_error,
 )
 
 
@@ -141,6 +142,28 @@ def _update(
     return value
 
 
+def _delete_blocks(lark_cli, doc, block_ids, *, identity):
+    """Delete only reviewed IDs; re-read after errors before retrying surviving blocks."""
+    for start in range(0, len(block_ids), 20):
+        pending = list(block_ids[start:start + 20])
+        for attempt in range(3):
+            try:
+                _update(lark_cli, doc, "block_delete", identity=identity,
+                        block_id=",".join(pending))
+                break
+            except LarkCliError as exc:
+                xml = fetch_document_xml(lark_cli, doc, identity=identity)
+                root = ET.fromstring("<root>" + xml + "</root>")
+                present = {node.get("id") for node in root.iter()}
+                pending = [block_id for block_id in pending if block_id in present]
+                if not pending:
+                    break
+                if not is_transient_error(exc) or attempt == 2:
+                    raise LarkCliError(
+                        f"删除旧正文未完成，仍存在的块：{','.join(pending)}；"
+                        f"新正文可能已写入，请先检查远端。原因：{exc}"
+                    ) from exc
+                time.sleep(attempt + 1)
 
 
 def _marker_block(xml, marker):
@@ -185,9 +208,8 @@ def rewrite_keeping_boards(lark_cli, doc, content, operations, old_xml, *, ident
             block_id=marker.attrib["id"],
             src_ids=op.block_id,
         )
-        _update(lark_cli, doc, "block_delete", identity=identity, block_id=marker.attrib["id"])
-    for block_id in reversed(old_ids):
-        _update(lark_cli, doc, "block_delete", identity=identity, block_id=block_id)
+        _delete_blocks(lark_cli, doc, [marker.attrib["id"]], identity=identity)
+    _delete_blocks(lark_cli, doc, list(reversed(old_ids)), identity=identity)
 
 
 def restore_and_bind(lark_cli, doc, operations, *, identity, atomic_write):
@@ -272,7 +294,7 @@ def _restore_board(lark_cli, doc, op, token, *, identity, atomic_write):
     if op.action == "create":
         xml = fetch_document_xml(lark_cli, doc, identity=identity)
         _, marker = _marker_block(xml, op.image.marker)
-        _update(lark_cli, doc, "block_delete", identity=identity, block_id=marker.attrib["id"])
+        _delete_blocks(lark_cli, doc, [marker.attrib["id"]], identity=identity)
     new_svg = not op.image.board.value
     if new_svg:
         if op.image.board.path.exists() or op.image.board.path.is_symlink():

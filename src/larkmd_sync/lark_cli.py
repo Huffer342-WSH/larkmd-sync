@@ -87,6 +87,17 @@ def _error(operation: str, result: subprocess.CompletedProcess[str], value: dict
     )
 
 
+def is_transient_error(error: Exception) -> bool:
+    """Only retry known transport/server failures, never validation or permission errors."""
+    return isinstance(error, LarkCliError) and any(
+        text in str(error).lower() for text in (
+            "timeout", "time out", "timed out", "server internal error",
+            "internal server error", "something went wrong", "frequency limit",
+            "rate limit", "too many requests",
+        )
+    )
+
+
 def fetch_markdown(
     lark_cli: str,
     doc: str,
@@ -648,7 +659,7 @@ def _validate_svg(content: bytes) -> None:
 def export_whiteboard_svg(
     lark_cli: str, token: str, *, identity: str = "user", cache_key: str = ""
 ) -> DownloadedMedia:
-    """Retry transient export timeouts; cache only against freshly read remote nodes."""
+    """Retry transient read failures; cache only against freshly read remote nodes."""
     cache_file = None
     if cache_key:
         scope = json.dumps([str(Path(lark_cli).resolve()), identity, token, cache_key])
@@ -678,9 +689,7 @@ def export_whiteboard_svg(
                 content = (Path(directory) / "board.svg").read_bytes()
                 _validate_svg(content)
         except (LarkCliError, OSError, ValueError, ET.ParseError) as exc:
-            transient = isinstance(exc, LarkCliError) and any(
-                word in str(exc).lower() for word in ("timeout", "time out", "timed out")
-            )
+            transient = is_transient_error(exc)
             if transient and attempt < 3:
                 time.sleep(attempt)
                 continue

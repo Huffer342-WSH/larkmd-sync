@@ -87,7 +87,7 @@ def test_svg_export_retries_timeout_and_caches_by_remote_content(monkeypatch, tm
     assert len(calls) == 6
 
 
-@pytest.mark.parametrize('message,attempts', [('server time out error', 3), ('permission denied', 1)])
+@pytest.mark.parametrize('message,attempts', [('server time out error', 3), ('A server internal error occured', 3), ('permission denied', 1), ('field validation failed', 1)])
 def test_svg_export_failure_reports_board_attempts_and_elapsed(monkeypatch, message, attempts):
     from larkmd_sync import lark_cli
 
