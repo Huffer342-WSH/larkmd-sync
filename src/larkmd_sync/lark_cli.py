@@ -407,15 +407,29 @@ def insert_local_image(
     root = ET.fromstring("<root>" + fetch_document_xml(
         lark_cli, document_id, identity=identity
     ) + "</root>")
-    blocks = [node for node in root if node.tag != "title"]
-    matches = [i for i, node in enumerate(blocks)
-               if node.tag == "p" and "".join(node.itertext()) == marker]
-    if len(matches) != 1:
-        raise LarkCliError("图片占位必须唯一匹配一个完整段落")
+    # Ordered-list image markers are appended to the preceding list item.
+    blocks = []
+    for node in root:
+        if node.tag == "title":
+            continue
+        if node.tag in {"ol", "ul"}:
+            blocks.extend(list(node))
+        else:
+            blocks.append(node)
+    matches = []
+    for index, node in enumerate(blocks):
+        text = "".join(node.itertext())
+        if (node.tag == "p" and text == marker) or (
+            after and node.tag == "li" and text.rstrip().endswith(" " + marker)
+        ):
+            matches.append(index)
+    if len(matches) != 1 or "".join(root.itertext()).count(marker) != 1:
+        raise LarkCliError("图片占位必须唯一匹配一个完整段落或预期的列表项末尾")
     index = matches[0]
-    anchor = blocks[index].attrib["id"] if after else (
-        blocks[index - 1].attrib["id"] if index else "0"
-    )
+    anchor_node = blocks[index] if after else (blocks[index - 1] if index else None)
+    anchor = anchor_node.attrib.get("id", "") if anchor_node is not None else "0"
+    if not anchor:
+        raise LarkCliError("图片插入位置缺少 block ID")
     content = f'<img path={quoteattr("@./" + image.name)}'
     if caption:
         content += f' caption={quoteattr(caption)}'

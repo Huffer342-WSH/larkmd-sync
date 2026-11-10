@@ -141,3 +141,30 @@ def test_svg_cache_expiration_and_unwritable_cache(monkeypatch, tmp_path):
     blocker.write_text('block')
     monkeypatch.setenv('XDG_CACHE_HOME', str(blocker))
     assert lark_cli.export_whiteboard_svg('cli', 'board', cache_key='nodes').content == b'<svg/>'
+
+
+@pytest.mark.parametrize('after,duplicate', [(True, False), (False, False), (True, True)])
+def test_image_marker_at_list_item_end(monkeypatch, tmp_path, after, duplicate):
+    import subprocess
+
+    from larkmd_sync import lark_cli
+
+    xml = ('<ol><li id="first" seq="1"><b>第一项</b> IMAGE_MARKER</li>'
+           '<li id="second" seq="2">第二项</li></ol>')
+    if duplicate:
+        xml += '<p id="duplicate">IMAGE_MARKER</p>'
+    monkeypatch.setattr(lark_cli, 'fetch_document_xml', lambda *a, **k: xml)
+    calls = []
+
+    def run(cli, args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, '{"ok":true,"data":{}}', '')
+
+    monkeypatch.setattr(lark_cli, '_run', run)
+    if after and not duplicate:
+        lark_cli.insert_local_image('cli', 'doc', tmp_path / 'a.png', 'IMAGE_MARKER', after=after)
+        assert calls[0][calls[0].index('--block-id') + 1] == 'first'
+    else:
+        with pytest.raises(LarkCliError, match='唯一'):
+            lark_cli.insert_local_image('cli', 'doc', tmp_path / 'a.png', 'IMAGE_MARKER', after=after)
+        assert not calls

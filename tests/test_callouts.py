@@ -91,3 +91,20 @@ def test_callout_replacement_requires_every_marker() -> None:
 
     with pytest.raises(ValueError, match="找不到高亮块临时标记"):
         callout_replacements('<p id="paragraph">内容</p>', prepared.callouts)
+
+
+@pytest.mark.parametrize('kind', ['NOTE', 'TIP', 'IMPORTANT', 'WARNING', 'CAUTION'])
+def test_all_alert_styles_remove_staging_marker(kind):
+    import xml.etree.ElementTree as ET
+
+    from larkmd_sync.core.callouts import CALLOUT_STYLES
+
+    local = prepare_callouts(f'> [!{kind}]\n> 内容\n')
+    xml = (f'<callout id="C" emoji="💡"><p id="P">内容</p>'
+           f'<p id="M">{local.callouts[0].marker}</p></callout>')
+    result = callout_replacements(xml, local.callouts)[0]
+    node = ET.fromstring(result.content)
+    assert node.attrib['emoji'] == CALLOUT_STYLES[kind].emoji
+    assert node.attrib['background-color'] == CALLOUT_STYLES[kind].background_color
+    assert 'LARKMD_SYNC_' not in result.content
+    assert ''.join(node.itertext()) == '内容'

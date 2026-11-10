@@ -187,10 +187,17 @@ def restore_text_colors(markdown: str, document_xml: str) -> RestoredColors:
     root = ET.fromstring("<root>" + document_xml + "</root>")
     changes = []
     warnings = []
+    table_nodes = {node for table in root.iter("table") for node in table.iter()}
     cursor = 0
     count = 0
     for block in root.iter():
         if block.tag not in _BLOCKS:
+            continue
+        if block in table_nodes:
+            if block.tag in {"td", "th"} and any(
+                "text-color" in node.attrib for node in block.iter()
+            ):
+                warnings.append("表格单元格字体颜色暂不能可靠恢复")
             continue
         # Nested list items get their own turn; don't count their colors twice.
         own = copy.deepcopy(block)

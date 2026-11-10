@@ -86,3 +86,18 @@ def test_css_palette_change_is_reported_and_comparison_is_stable(tmp_path):
     assert prepared.color_normalizations == ("#ff0000 → #d83931",)
     assert prepared.comparison_markdown == '<span style="color:#d83931">红字</span>'
     assert "rgb(216,57,49)" in prepared.upload_markdown
+
+
+def test_table_text_cannot_advance_cursor_into_mermaid():
+    xml = ('<table><tr><td><p>正文</p></td></tr></table>'
+           '<p><span text-color="red">红字</span></p>')
+    markdown = '| 正文 |\n| --- |\n\n红字\n\n```mermaid\nmindmap\n  正文\n```\n'
+    restored = restore_text_colors(markdown, xml)
+    assert not restored.warnings
+    assert '<span style="color:#d83931">红字</span>' in restored.markdown
+    assert '```mermaid\nmindmap\n  正文\n```' in restored.markdown
+
+
+def test_table_color_remains_blocking():
+    xml = '<table><tr><td><p><span text-color="red">红字</span></p></td></tr></table>'
+    assert restore_text_colors('| 红字 |\n| --- |\n', xml).warnings
