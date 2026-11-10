@@ -33,7 +33,7 @@ def test_pull_apply_rejects_stale_remote_revision(tmp_path: Path) -> None:
         return _markdown(revision["value"])
 
     with patch("larkmd_sync.sync.fetch_markdown", side_effect=markdown_result):
-        planned = pull_file(target, URL, lark_cli="lark-cli")
+        planned = pull_file(target, URL, lark_cli="lark-cli", dry_run=True)
         revision["value"] = 2
         applied = pull_file(
             target,
@@ -66,7 +66,7 @@ def test_pull_downloads_images_and_restores_mermaid(tmp_path: Path) -> None:
             return_value=WhiteboardSource("mermaid", "flowchart LR\n    A --> B"),
         ),
     ):
-        planned = pull_file(target, URL, lark_cli="lark-cli")
+        planned = pull_file(target, URL, lark_cli="lark-cli", dry_run=True)
         applied = pull_file(
             target,
             URL,
@@ -100,7 +100,7 @@ def test_push_strips_front_matter_and_keeps_gfm_table(tmp_path: Path) -> None:
             return_value={"document_id": "docxDocument123", "revision_id": 2},
         ) as overwrite,
     ):
-        planned = push_file(target, lark_cli="lark-cli")
+        planned = push_file(target, lark_cli="lark-cli", dry_run=True)
         applied = push_file(
             target,
             plan_id=planned.data.plan_id,
@@ -134,7 +134,7 @@ def test_push_uploads_local_image_and_creates_mermaid_board(tmp_path: Path) -> N
         patch("larkmd_sync.sync.insert_local_image") as insert_image,
         patch("larkmd_sync.sync.remove_image_marker") as remove_marker,
     ):
-        planned = push_file(target, lark_cli="lark-cli")
+        planned = push_file(target, lark_cli="lark-cli", dry_run=True)
         applied = push_file(
             target,
             plan_id=planned.data.plan_id,
@@ -204,7 +204,7 @@ def test_push_restores_sequence_after_interrupted_list_image(tmp_path: Path) -> 
         patch("larkmd_sync.sync.fetch_document_xml", side_effect=full_xml),
         patch("larkmd_sync.sync.replace_block_xml") as replace_block,
     ):
-        planned = push_file(target, lark_cli="lark-cli")
+        planned = push_file(target, lark_cli="lark-cli", dry_run=True)
         applied = push_file(
             target,
             plan_id=planned.data.plan_id,
@@ -254,7 +254,7 @@ def test_push_styles_alert_as_exact_callout_block(tmp_path: Path) -> None:
         patch("larkmd_sync.sync.fetch_document_xml", side_effect=full_xml) as fetch_xml,
         patch("larkmd_sync.sync.replace_block_xml") as replace_block,
     ):
-        planned = push_file(target, lark_cli="lark-cli")
+        planned = push_file(target, lark_cli="lark-cli", dry_run=True)
         applied = push_file(
             target,
             plan_id=planned.data.plan_id,
@@ -281,7 +281,7 @@ def test_pull_converts_callout_and_warns_about_style_normalization(
     )
 
     with patch("larkmd_sync.sync.fetch_markdown", return_value=remote):
-        planned = pull_file(target, URL, lark_cli="lark-cli")
+        planned = pull_file(target, URL, lark_cli="lark-cli", dry_run=True)
         applied = pull_file(
             target,
             URL,
@@ -339,7 +339,7 @@ def test_missing_front_matter_requires_runtime_url(tmp_path: Path) -> None:
     target = tmp_path / "document.md"
     target.write_text("# Local document\n", encoding="utf-8")
 
-    result = push_file(target, lark_cli="lark-cli")
+    result = push_file(target, lark_cli="lark-cli", dry_run=True)
 
     assert not result.ok
     assert result.status == 422
@@ -369,7 +369,7 @@ def test_remote_cloud_feature_is_reported_without_sidecar(tmp_path: Path) -> Non
         patch("larkmd_sync.sync.fetch_markdown", return_value=remote),
         patch("larkmd_sync.sync.overwrite_doc") as overwrite,
     ):
-        result = push_file(target, lark_cli="lark-cli")
+        result = push_file(target, lark_cli="lark-cli", dry_run=True)
         applied = push_file(
             target,
             plan_id=result.data.plan_id,
@@ -399,7 +399,7 @@ def test_push_apply_rejects_stale_plan_without_remote_write(tmp_path: Path) -> N
         patch("larkmd_sync.sync.fetch_markdown", side_effect=markdown_result),
         patch("larkmd_sync.sync.overwrite_doc") as overwrite,
     ):
-        planned = push_file(target, URL, lark_cli="lark-cli")
+        planned = push_file(target, URL, lark_cli="lark-cli", dry_run=True)
         revision["value"] = 2
         applied = push_file(
             target,
@@ -490,7 +490,7 @@ def test_tree_push_and_status_scan_front_matter(tmp_path: Path) -> None:
             return_value={"document_id": "doc", "revision_id": 2},
         ) as overwrite,
     ):
-        planned = push_tree(root, lark_cli="lark-cli")
+        planned = push_tree(root, lark_cli="lark-cli", dry_run=True)
         applied = push_tree(
             root,
             plan_id=planned.data.plan_id,
@@ -530,7 +530,7 @@ def test_tree_push_maps_plain_markdown_from_root_url_and_rewrites_links(
             return_value={"document_id": "doc", "revision_id": 2},
         ) as overwrite,
     ):
-        planned = push_tree(root, URL, lark_cli="lark-cli")
+        planned = push_tree(root, URL, lark_cli="lark-cli", dry_run=True)
         applied = push_tree(
             root,
             URL,
@@ -567,7 +567,7 @@ def test_tree_push_uses_only_canonical_root_file_mapping(tmp_path: Path) -> None
         patch("larkmd_sync.sync.list_wiki_children", return_value=[child_node]),
         patch("larkmd_sync.sync.fetch_markdown", return_value=_markdown()),
     ):
-        planned = push_tree(root, lark_cli="lark-cli")
+        planned = push_tree(root, lark_cli="lark-cli", dry_run=True)
 
     assert planned.ok
     assert planned.data.conflicts == ()
@@ -593,7 +593,7 @@ def test_tree_push_reports_plain_markdown_without_remote_title_match(
         patch("larkmd_sync.sync.list_wiki_children", return_value=[child_node]),
         patch("larkmd_sync.sync.fetch_markdown", return_value=_markdown()),
     ):
-        planned = push_tree(root, URL, lark_cli="lark-cli")
+        planned = push_tree(root, URL, lark_cli="lark-cli", dry_run=True)
 
     assert planned.ok
     assert any(str(unknown) in conflict for conflict in planned.data.conflicts)
@@ -640,7 +640,7 @@ def test_pull_pipeline_corrects_bold_and_compares_corrected_snapshot(tmp_path: P
         '```python\n**代码：**literal\n```\n'
     ))
     with patch('larkmd_sync.sync.fetch_markdown', return_value=remote):
-        planned = pull_file(target, URL, lark_cli='lark-cli')
+        planned = pull_file(target, URL, lark_cli='lark-cli', dry_run=True)
         assert planned.ok and not target.exists()
         applied = pull_file(target, URL, plan_id=planned.data.plan_id, lark_cli='lark-cli')
         assert applied.ok
@@ -671,10 +671,10 @@ def test_heading_number_roundtrip_uses_native_heading_attribute(tmp_path: Path) 
          patch('larkmd_sync.sync.overwrite_doc', side_effect=write), \
          patch('larkmd_sync.sync.fetch_document_xml', side_effect=xml), \
          patch('larkmd_sync.sync.replace_block_xml') as replace:
-        plan = pull_file(target, URL, lark_cli='cli')
+        plan = pull_file(target, URL, lark_cli='cli', dry_run=True)
         assert pull_file(target, URL, plan_id=plan.data.plan_id, lark_cli='cli').ok
         assert '# 1. 章 <!-- larkmd-heading:' in target.read_text()
-        plan = push_file(target, lark_cli='cli')
+        plan = push_file(target, lark_cli='cli', dry_run=True)
         assert plan.ok
         assert push_file(target, plan_id=plan.data.plan_id, lark_cli='cli').ok
         assert '# 1. 章' not in uploaded[-1]

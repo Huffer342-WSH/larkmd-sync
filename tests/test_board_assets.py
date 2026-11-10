@@ -323,7 +323,7 @@ def test_first_svg_creates_binding_only_after_verified_upload(tmp_path, monkeypa
     md.write_text('![new](new.board.svg)\n')
     remote = {'content': '# Remote\n', 'document_id': 'D', 'revision_id': 1}
     monkeypatch.setattr('larkmd_sync.sync.fetch_markdown', lambda *a, **k: remote)
-    plan = push_file(md, 'https://tenant.feishu.cn/docx/D', lark_cli='unused')
+    plan = push_file(md, 'https://tenant.feishu.cn/docx/D', lark_cli='unused', dry_run=True)
     assert plan.ok and not plan.data.conflicts
     assert {'create_native_board', 'write_local_board_source'} <= {a.action for a in plan.data.actions}
     assert not svg.with_suffix('.json').exists()
@@ -414,7 +414,7 @@ def test_first_svg_plan_expires_if_sidecar_appears(tmp_path, monkeypatch):
         'content': '# Remote\n', 'document_id': 'D', 'revision_id': 1})
     monkeypatch.setattr('larkmd_sync.sync.overwrite_doc',
                         lambda *a, **k: pytest.fail('stale plan must not write remote'))
-    plan = push_file(md, 'https://tenant.feishu.cn/docx/D', lark_cli='unused')
+    plan = push_file(md, 'https://tenant.feishu.cn/docx/D', lark_cli='unused', dry_run=True)
     assert plan.ok
     import hashlib
 

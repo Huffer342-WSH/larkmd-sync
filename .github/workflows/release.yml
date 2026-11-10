@@ -60,9 +60,9 @@ jobs:
           uv pip install --python "$RUNNER_TEMP/wheel-env/bin/python" dist/*.whl
           cd "$RUNNER_TEMP"
           "$RUNNER_TEMP/wheel-env/bin/python" -m larkmd_sync --version
-          "$RUNNER_TEMP/wheel-env/bin/python" -m larkmd_sync --json --no-input skill validate
-          "$RUNNER_TEMP/wheel-env/bin/python" -m larkmd_sync --json --no-input skill install --dest "$RUNNER_TEMP/skills" --dry-run
-          "$RUNNER_TEMP/wheel-env/bin/python" -m larkmd_sync --json --no-input skill install --dest "$RUNNER_TEMP/skills"
+          "$RUNNER_TEMP/wheel-env/bin/python" -m larkmd_sync --json skill validate
+          "$RUNNER_TEMP/wheel-env/bin/python" -m larkmd_sync --json skill install --dest "$RUNNER_TEMP/skills" --dry-run
+          "$RUNNER_TEMP/wheel-env/bin/python" -m larkmd_sync --json skill install --dest "$RUNNER_TEMP/skills"
       - name: Generate release notes from commits
         env:
           RELEASE_TAG: ${{ github.ref_name }}

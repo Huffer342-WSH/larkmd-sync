@@ -63,9 +63,9 @@ larkmd-sync --version
 Python 包安装不会修改 Agent 配置。Skill 需要单独预览和安装：
 
 ```bash
-larkmd-sync --json --no-input skill install larkmd-sync \
+larkmd-sync --json skill install larkmd-sync \
   --agent codex --scope user --dry-run
-larkmd-sync --json --no-input skill install larkmd-sync \
+larkmd-sync --json skill install larkmd-sync \
   --agent codex --scope user
 ```
 
@@ -77,41 +77,30 @@ export LARK_BASE_URL=https://tenant.feishu.cn
 
 ## CLI
 
-Agent 调用统一添加 `--json --no-input`。stdout 只输出一个 schema `1` JSON，诊断信息写入 stderr。
+Agent 调用统一添加 `--json`。stdout 只输出一个 schema `1` JSON，诊断信息写入 stderr。
 
 ### 单文档
 
-```bash
-# 生成拉取计划，再用返回的 data.plan_id 执行
-larkmd-sync --json --no-input pull ./docs/design.md --doc "$URL"
-larkmd-sync --json --no-input pull ./docs/design.md --doc "$URL" \
-  --apply 'sha256:...'
+同步命令默认直接执行，添加 `--dry-run` 只预览目标、动作、冲突和警告：
 
-# 有 front matter 时无需重复传 URL
-larkmd-sync --json --no-input diff ./docs/design.md
-larkmd-sync --json --no-input push ./docs/design.md
-larkmd-sync --json --no-input push ./docs/design.md \
-  --apply 'sha256:...'
+```bash
+larkmd-sync --json pull ./docs/design.md --doc "$URL"
+larkmd-sync --json push ./docs/design.md --doc "$URL"
+larkmd-sync --json push ./docs/design.md --doc "$URL" --dry-run
+larkmd-sync --json diff ./docs/design.md --doc "$URL"
 ```
 
-使用 `pull --no-front-matter` 可以得到不带映射的普通 Markdown；后续 `diff` 和 `push` 必须通过 `--doc URL` 指定目标。如果显式 URL 与已有 front matter 不一致，工具会拒绝执行。
+已有 front matter 映射时，push/diff 可以省略 `--doc`。`pull --no-front-matter` 只保存普通 Markdown，后续操作需继续传 URL。显式 URL 与文件映射不一致时拒绝执行。
 
-计划中的 `write_local_image` 或 `insert_remote_image` 动作会列出每张图片的实际路径。apply 结果通过 `assets_changed` 和 `asset_paths` 报告资源写入；`diff.detail` 分别报告正文和图片字节是否变化。
+默认执行仍检查两端状态，有冲突或推送阻断警告时停止。`--dry-run` 返回计划而不执行同步；如需执行已查看的特定计划，使用 `--apply PLAN_ID`，不能同时传 `--dry-run`。计划过期时拒绝执行，不自动强制覆盖。
 
 ### Wiki 文档树
 
 ```bash
-larkmd-sync --json --no-input tree pull ./wiki-docs --doc "$ROOT_URL"
-larkmd-sync --json --no-input tree pull ./wiki-docs --doc "$ROOT_URL" \
-  --apply 'sha256:...'
-
-# 本地文件不保存 URL
-larkmd-sync --json --no-input tree pull ./wiki-docs --doc "$ROOT_URL" \
-  --no-front-matter
-larkmd-sync --json --no-input tree status ./wiki-docs --doc "$ROOT_URL"
-larkmd-sync --json --no-input tree push ./wiki-docs --doc "$ROOT_URL"
-larkmd-sync --json --no-input tree push ./wiki-docs --doc "$ROOT_URL" \
-  --apply 'sha256:...'
+larkmd-sync --json tree pull ./wiki-docs --doc "$ROOT_URL"
+larkmd-sync --json tree status ./wiki-docs --doc "$ROOT_URL"
+larkmd-sync --json tree push ./wiki-docs --doc "$ROOT_URL" --dry-run
+larkmd-sync --json tree push ./wiki-docs --doc "$ROOT_URL"
 ```
 
 `tree pull` 默认为每篇文档写入自己的 front matter；添加 `--no-front-matter` 后只写普通 Markdown。两种模式都不生成 `tree.json`。
@@ -135,18 +124,12 @@ CLI 只处理参数、JSON 和退出码。公共 API 默认不写 stdout/stderr�
 ```python
 from larkmd_sync import pull_file, push_file
 
-preview = pull_file(
-    "./docs/design.md",
-    "https://tenant.feishu.cn/wiki/token",
-)
-if preview.ok and not preview.data.conflicts:
-    applied = pull_file(
-        "./docs/design.md",
-        "https://tenant.feishu.cn/wiki/token",
-        plan_id=preview.data.plan_id,
-    )
+# 默认执行；预期失败通过 result.ok / result.error 返回
+result = pull_file("./docs/design.md", "https://tenant.feishu.cn/wiki/token")
 
-push_preview = push_file("./docs/design.md")
+# 仅预览
+preview = push_file("./docs/design.md", dry_run=True)
+# 也可以传 plan_id=preview.data.plan_id 执行指定计划
 ```
 
 公开入口为 `pull_file`、`push_file`、`compare_file`、`pull_tree`、`push_tree`、`tree_status`，以及结果模型和 Skill 生命周期 API。`push_tree` 和 `tree_status` 的第二个参数可以传根 Wiki URL，用于无 URL 文档树。

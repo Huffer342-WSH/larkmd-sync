@@ -2,6 +2,8 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from larkmd_sync.cli import main
 from larkmd_sync.models import SyncAction, SyncApplyResult, SyncPlan, SyncWarning
 from larkmd_sync.result import ApiResult
@@ -40,7 +42,7 @@ def test_json_stdout_contains_only_plan_envelope(tmp_path: Path, capsys) -> None
                     "--doc",
                     "https://tenant.feishu.cn/wiki/document",
                     "--json",
-                    "--no-input",
+                    "--dry-run",
                 ]
             )
             == 0
@@ -53,6 +55,7 @@ def test_json_stdout_contains_only_plan_envelope(tmp_path: Path, capsys) -> None
     assert value["warnings"][0]["code"] == "test_warning"
     assert streams.err == ""
     assert public_api.call_args.kwargs["plan_id"] is None
+    assert public_api.call_args.kwargs["dry_run"] is True
 
 
 def test_push_apply_passes_reviewed_plan_id(tmp_path: Path, capsys) -> None:
@@ -87,7 +90,6 @@ def test_skill_install_requires_explicit_dry_run_for_preview(
                 str(tmp_path),
                 "--dry-run",
                 "--json",
-                "--no-input",
             ]
         )
         == 0
@@ -112,7 +114,7 @@ def test_json_validation_failure_stays_on_stdout(tmp_path: Path, capsys) -> None
 
 
 def test_invalid_nested_arguments_return_json(capsys) -> None:
-    assert main(['--json', '--no-input', 'tree', 'pull']) == 2
+    assert main(['--json', 'tree', 'pull']) == 2
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert payload['schema_version'] == '1'
@@ -125,3 +127,16 @@ def test_skill_list_alias_is_read_only(capsys) -> None:
     assert main(['--json', 'skill', 'ls']) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload['data'][0]['name'] == 'larkmd-sync'
+
+
+@pytest.mark.parametrize("mode,dry_run", [([], False), (["--dry-run"], True)])
+def test_cli_selects_execution_mode(mode, dry_run, capsys):
+    with patch("larkmd_sync.cli.push_file", return_value=ApiResult(ok=True, status=200)) as api:
+        assert main(["--json", "push", "local.md", *mode]) == 0
+    assert api.call_args.kwargs["dry_run"] is dry_run
+    json.loads(capsys.readouterr().out)
+
+
+def test_cli_rejects_dry_run_with_apply(capsys):
+    assert main(["--json", "push", "local.md", "--dry-run", "--apply", "P"]) == 2
+    assert not json.loads(capsys.readouterr().out)["ok"]

@@ -1,115 +1,43 @@
-# CLI 参考
+# CLI 使用补充
 
-## 通用约定
+参数以当前 CLI 的 `--help` 为准。本页只补充结果解释和编辑约束，不需要每次同步前全部阅读。
 
-```bash
-larkmd-sync --json --no-input <command> ...
-```
+## 结果与失败处理
 
-stdout 只包含一个 JSON 对象：
+机器输出为单个 JSON：`schema_version: "1"`、`ok`、`data`、`warnings`；失败时包含 `error.status` 和 `error.message`。
 
-```json
-{
-  "schema_version": "1",
-  "ok": true,
-  "data": {},
-  "warnings": []
-}
-```
+| 退出码 | 含义 |
+| --- | --- |
+| 0 | 命令成功；计划仍需检查冲突和警告 |
+| 2 | 参数或输入校验失败 |
+| 3 | 文件、映射或计划冲突 |
+| 4 | 外部依赖、网络或运行失败 |
 
-失败时包含 `error.status` 和 `error.message`。退出码：`0` 成功，`2` 参数或输入校验失败，`3` 文件、映射或计划冲突，`4` 外部依赖、网络或运行失败。
+同步命令默认执行，`--dry-run` 只返回计划。计划的 `data.plan_id` 可用于 `--apply PLAN_ID` 执行；执行结果的 `changed`、`asset_paths` 表示已处理内容；比较结果的 `data.identical` 表示工具判断正文和资源是否一致。非阻断警告可继续执行，但应说明颜色或样式归一化等影响。
 
-完整 URL 保留租户域名。只传 token 时可以通过 `LARK_BASE_URL` 指定租户。身份参数为 `--as user|bot`，默认 `user`。
+远端写入可能部分完成。失败后核对页面，不把失败当作未修改；原生画板创建后失败时，先拉取到新路径检查并恢复映射。双端冲突、远端画板被删除或不支持的内容不能通过删除本地元数据绕过。
 
-## Plan/apply
+## 文件与格式
 
-会修改本地或远端的命令先返回计划：
+- 拉取默认保存文档映射到 YAML front matter；`--no-front-matter` 可关闭，后续单篇操作需继续传 `--doc`。显式 URL 不应与文件映射冲突。
+- 本地 Markdown 相对链接仅在目标有文档映射时转为云端链接。Wiki 树可以只提供根 URL，按同层唯一标题匹配；远端缺少页面时需先通过 Wiki 工具创建。
+- 普通图片支持 PNG、JPEG、GIF、WebP、BMP。普通 `.svg` 不作为画板，创建可编辑画板使用 `.board.svg`。SVG 导入不保证所有图形属性或连线关系无损。
+- Mermaid 支持 flowchart、sequenceDiagram、classDiagram、stateDiagram/stateDiagram-v2、erDiagram、gantt、pie、mindmap；其他类型不保证往返。
+- 高亮块支持 NOTE、TIP、IMPORTANT、WARNING、CAUTION，使用固定样式；块内不放图片、代码块、表格或画板。
+- 字体颜色写成 `<span style="color:#d83931">红字</span>`；颜色会归一到飞书色板。本地渲染器可能过滤样式；表格内颜色暂不支持可靠回读。
+- 同步不是云文档完整备份，不保证保留全部评论、排版或专有组件。遇到无法恢复的附件、同步块、Sheet/Base 等，应改用对应工具。
 
-```bash
-larkmd-sync --json --no-input push ./document.md --doc "$URL"
-larkmd-sync --json --no-input push ./document.md --doc "$URL" \
-  --apply 'sha256:...'
-```
+## Skill 安装与更新
 
-apply 会重新读取本地文件和远端 revision。任何一侧变化都会使计划过期。计划不会写入本地文件。
-
-## 单文档
+Python CLI 与 Agent Skill 分别安装。用户要求安装到共享用户目录时：
 
 ```bash
-# 拉取；默认在 Markdown 内写 title 和 feishu_url front matter
-larkmd-sync --json --no-input pull ./document.md --doc "$URL"
-larkmd-sync --json --no-input pull ./document.md --doc "$URL" \
-  --apply 'sha256:...'
-
-# 不写 front matter；后续命令需要继续传 --doc
-larkmd-sync --json --no-input pull ./document.md --doc "$URL" \
-  --no-front-matter
-
-# 有 URL front matter 时可以省略 --doc
-larkmd-sync --json --no-input diff ./document.md
-larkmd-sync --json --no-input push ./document.md
+larkmd-sync --json skill install --dest "$HOME/.agents/skills" --dry-run
+larkmd-sync --json skill install --dest "$HOME/.agents/skills"
 ```
 
-推送时会移除 front matter，并把指向其他本地 Markdown 的链接转换成目标文件声明的飞书 URL。GFM 表格保持 Markdown，不提供 XML 模式或表格宽度参数。
+安装目录为 `~/.agents/skills/larkmd-sync/`；`--agent codex --scope user` 当前也指向此位置。Claude 专用目录使用 `--agent claude --scope user`。
 
-单独成块的本地相对路径图片会产生 `insert_remote_image` 计划动作。支持 PNG、JPEG、GIF、WebP 和 BMP；图片必须位于 Markdown 同目录或子目录。拉取时图片产生 `write_local_image` 动作并写入 `.assets/<文档名>/`。apply 结果中的 `assets_changed` 和 `asset_paths` 报告实际资源写入。
+升级 CLI 后，用 `skill update` 替换上述 `skill install`，先预览再执行。已有本地修改时先检查差异，不默认使用 `--force`。其他操作查看 `larkmd-sync skill --help` 及子命令帮助。
 
-图片打断有序列表时，飞书媒体接口会重置后续列表编号。工具在图片上传后自动恢复 Markdown 中明确写出的序号，例如 `1.`、图片、`2.` 会继续显示为 1、2。该修复只在内存中读取块 XML，不增加本地文件。
-
-fenced `mermaid` 在推送时创建飞书画板，拉取时恢复为 fenced block。保证双向支持 `flowchart`、`sequenceDiagram`、`classDiagram`、`stateDiagram`/`stateDiagram-v2`、`erDiagram`、`gantt`、`pie` 和 `mindmap`。其他 Mermaid 声明会透传，但不保证飞书能够无损回导。`diff.detail.assets_changed` 单独报告图片字节差异，正文和图片都一致时才返回 `identical: true`。
-
-`> [!NOTE]`、`TIP`、`IMPORTANT`、`WARNING` 和 `CAUTION` 会转换为飞书高亮块。推送在正文覆盖后读取一次块 XML，通过临时标记设置对应图标和固定颜色；临时标记和 block ID 不写入本地文件。拉取按图标恢复 Alert，并返回 `callout_style_normalized` warning，说明飞书任意自定义颜色会在下次回写时归一化。高亮块内暂不允许图片、代码块、表格、Mermaid 或其他资源块。
-
-## 文档树
-
-```bash
-larkmd-sync --json --no-input tree pull ./wiki-docs --doc "$ROOT_URL"
-larkmd-sync --json --no-input tree pull ./wiki-docs --doc "$ROOT_URL" \
-  --apply 'sha256:...'
-
-# 拉取普通 Markdown，不在任何文件中保存 URL
-larkmd-sync --json --no-input tree pull ./wiki-docs --doc "$ROOT_URL" \
-  --no-front-matter
-larkmd-sync --json --no-input tree pull ./wiki-docs --doc "$ROOT_URL" \
-  --no-front-matter --apply 'sha256:...'
-
-# 每篇 Markdown 已通过 front matter 保存 URL
-larkmd-sync --json --no-input tree status ./wiki-docs
-larkmd-sync --json --no-input tree push ./wiki-docs
-larkmd-sync --json --no-input tree push ./wiki-docs --apply 'sha256:...'
-
-# 只有根 Wiki URL；子文档按目录层级和页面标题匹配
-larkmd-sync --json --no-input tree status ./wiki-docs --doc "$ROOT_URL"
-larkmd-sync --json --no-input tree push ./wiki-docs --doc "$ROOT_URL"
-larkmd-sync --json --no-input tree push ./wiki-docs --doc "$ROOT_URL" \
-  --apply 'sha256:...'
-```
-
-`tree pull/status/push` 支持 `--max-depth N` 和 `--page-limit N`。`tree pull` 默认让每篇文件通过自己的 front matter 保存 URL；`--no-front-matter` 只写普通 Markdown。两种方式都不生成清单。
-
-`tree status/push --doc ROOT_URL` 先遍历远端 Wiki。根页使用 `README.md`、`index.md`、与远端根标题匹配的页面或唯一顶层 Markdown；子页按目录层级和一级标题匹配同层 `docx` 节点，没有一级标题时使用文件名。树内相对 Markdown 链接用同一份映射转换成远端 URL。本地页面找不到同层同标题节点或任一侧同层重名时返回冲突，远端未匹配页面和非 `docx` 节点作为 warning 跳过。
-
-不传 `--doc` 时继续递归读取每篇文件的 URL。`Root.md` 加 `Root/Child.md` 的布局还允许只在 `Root.md` 保存根 URL，工具会自动按层级和标题映射子文件。
-
-Sheet、Base 等非 `docx` 子节点会在拉取计划中列为跳过项。拉取不会删除远端已经移除的本地文件。
-
-## Markdown 限制
-
-工具不保存 XML、reference map 或文档树清单。原生画板保留 `.board.json` 源数据和同步基准，旁边的 `.board.svg` 是本地编辑源与预览，旧 `.board.jpg/png` 仅兼容读取。图片文件本身不是 sidecar，而是本地 Markdown 的正常资源。内部块 XML 只用于修复已经支持的飞书属性，不用于恢复 Markdown 无法表达的结构。`blocking: true` 表示远端包含无法恢复的引用、无法恢复的原生画板或其他专有结构：拉取和比较可以继续，推送必须停止并改用对应的飞书工具。
-
-## Skill 生命周期
-
-```bash
-larkmd-sync --json --no-input skill list
-larkmd-sync --json --no-input skill validate larkmd-sync
-larkmd-sync --json --no-input skill install larkmd-sync \
-  --agent codex --scope user --dry-run
-larkmd-sync --json --no-input skill install larkmd-sync \
-  --agent codex --scope user
-larkmd-sync --json --no-input skill status larkmd-sync \
-  --agent codex --scope user
-```
-
-未知来源或被本地修改的 Skill 默认不覆盖。需要保留现有内容时使用 `--backup`；只有确认可以丢弃时才使用 `--force`。
-
-原生画板计划包含 `write_local_board_source`、`create_native_board`、`keep_native_board`、`update_native_board`、`remote_changed_native_board` 和 `update_local_board_binding` 等动作。已有原生画板的正文更新可能为 `update_text_blocks` 或 `rewrite_text_keep_native_boards`；后者保留画板 token，但会重建其他正文块。
+画板只编辑 SVG，JSON 是同步元数据。上传成功后本地 SVG 会更新为云端最终导出的版本，保留原稿请另存。新建画板按 SVG 比例设置显示区域；已有画板比例变化时，需在飞书中调整画板块显示大小。旧版 JSON nodes 有未同步修改时不会自动丢弃。

@@ -98,7 +98,9 @@ def _add_identity(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_apply_and_identity(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--apply", metavar="PLAN_ID")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="只生成计划，不执行同步")
+    mode.add_argument("--apply", metavar="PLAN_ID", help="执行指定计划；不传时自动检查并同步")
     _add_identity(parser)
 
 
@@ -114,7 +116,6 @@ def build_parser() -> argparse.ArgumentParser:
         version=f"%(prog)s {__version__}",
     )
     parser.add_argument("--json", action="store_true", help="stdout 只输出稳定 JSON")
-    parser.add_argument("--no-input", action="store_true", help="禁止交互")
     parser.add_argument("--lark-cli", help="lark-cli 可执行文件路径")
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -190,7 +191,7 @@ def _normalize_global_args(argv: list[str]) -> list[str]:
     index = 0
     while index < len(argv):
         value = argv[index]
-        if value in {"--json", "--no-input"} or value.startswith("--lark-cli="):
+        if value == "--json" or value.startswith("--lark-cli="):
             global_args.append(value)
         elif value == "--lark-cli" and index + 1 < len(argv):
             global_args.extend((value, argv[index + 1]))
@@ -207,6 +208,7 @@ def _run(args: argparse.Namespace) -> ApiResult | object:
             args.md_file,
             args.doc,
             plan_id=args.apply,
+            dry_run=args.dry_run,
             lark_cli=args.lark_cli,
             identity=args.identity,
             include_front_matter=not args.no_front_matter,
@@ -217,6 +219,7 @@ def _run(args: argparse.Namespace) -> ApiResult | object:
             args.md_file,
             args.doc,
             plan_id=args.apply,
+            dry_run=args.dry_run,
             lark_cli=args.lark_cli,
             identity=args.identity,
             diagnostic=_diagnostic,
@@ -235,6 +238,7 @@ def _run(args: argparse.Namespace) -> ApiResult | object:
                 args.doc,
                 args.directory,
                 plan_id=args.apply,
+                dry_run=args.dry_run,
                 lark_cli=args.lark_cli,
                 identity=args.identity,
                 max_depth=args.max_depth,
@@ -247,6 +251,7 @@ def _run(args: argparse.Namespace) -> ApiResult | object:
                 args.directory,
                 args.doc,
                 plan_id=args.apply,
+                dry_run=args.dry_run,
                 lark_cli=args.lark_cli,
                 identity=args.identity,
                 max_depth=args.max_depth,

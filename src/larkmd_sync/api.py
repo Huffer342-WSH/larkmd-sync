@@ -47,35 +47,54 @@ def _run_quietly(
     return result
 
 
+def _synchronize(plan, apply, *, dry_run: bool, plan_id: str | None) -> ApiResult:
+    if dry_run and plan_id is not None:
+        raise ValueError("dry_run 与 plan_id 不能同时使用")
+    if plan_id is not None:
+        return apply(plan_id)
+    preview = plan()
+    if dry_run or not preview.ok:
+        return preview
+    proposed = preview.data
+    problems = list(proposed.conflicts)
+    if proposed.operation.endswith("push"):
+        problems.extend(w.message for w in proposed.warnings if w.blocking)
+    if problems:
+        return ApiResult(ok=False, status=409, data=proposed, error="；".join(problems))
+    return apply(proposed.plan_id)
+
+
 def pull_file(
     markdown_file: str | Path,
     document_url: str,
     *,
+    dry_run: bool = False,
     plan_id: str | None = None,
     lark_cli: str | None = None,
     identity: str = "user",
     include_front_matter: bool = True,
     diagnostic: Diagnostic | None = None,
 ) -> ApiResult:
-    """预览或执行单篇文档拉取。"""
+    """拉取文档；dry_run=True 仅预览，plan_id 可执行指定计划。"""
     return _run_quietly(
-        lambda: (
-            apply_pull_file(
-                lark_cli or find_lark_cli(),
-                document_url,
-                markdown_file,
-                plan_id,
-                identity=identity,
-                include_front_matter=include_front_matter,
-            )
-            if plan_id
-            else plan_pull_file(
+        lambda: _synchronize(
+            lambda: plan_pull_file(
                 lark_cli or find_lark_cli(),
                 document_url,
                 markdown_file,
                 identity=identity,
                 include_front_matter=include_front_matter,
-            )
+            ),
+            lambda reviewed_id: apply_pull_file(
+                lark_cli or find_lark_cli(),
+                document_url,
+                markdown_file,
+                reviewed_id,
+                identity=identity,
+                include_front_matter=include_front_matter,
+            ),
+            dry_run=dry_run,
+            plan_id=plan_id,
         ),
         diagnostic,
     )
@@ -85,28 +104,30 @@ def push_file(
     markdown_file: str | Path,
     document_url: str | None = None,
     *,
+    dry_run: bool = False,
     plan_id: str | None = None,
     lark_cli: str | None = None,
     identity: str = "user",
     diagnostic: Diagnostic | None = None,
 ) -> ApiResult:
-    """预览或执行单篇 Markdown 推送。"""
+    """推送 Markdown；dry_run=True 仅预览，plan_id 可执行指定计划。"""
     return _run_quietly(
-        lambda: (
-            apply_push_file(
-                lark_cli or find_lark_cli(),
-                markdown_file,
-                plan_id,
-                document_url,
-                identity=identity,
-            )
-            if plan_id
-            else plan_push_file(
+        lambda: _synchronize(
+            lambda: plan_push_file(
                 lark_cli or find_lark_cli(),
                 markdown_file,
                 document_url,
                 identity=identity,
-            )
+            ),
+            lambda reviewed_id: apply_push_file(
+                lark_cli or find_lark_cli(),
+                markdown_file,
+                reviewed_id,
+                document_url,
+                identity=identity,
+            ),
+            dry_run=dry_run,
+            plan_id=plan_id,
         ),
         diagnostic,
     )
@@ -136,6 +157,7 @@ def pull_tree(
     root_document_url: str,
     directory: str | Path,
     *,
+    dry_run: bool = False,
     plan_id: str | None = None,
     lark_cli: str | None = None,
     identity: str = "user",
@@ -144,21 +166,10 @@ def pull_tree(
     include_front_matter: bool = True,
     diagnostic: Diagnostic | None = None,
 ) -> ApiResult:
-    """预览或执行 Wiki 根文档及其子文档拉取。"""
+    """拉取 Wiki 文档树；dry_run=True 仅预览。"""
     return _run_quietly(
-        lambda: (
-            apply_tree_pull(
-                lark_cli or find_lark_cli(),
-                root_document_url,
-                directory,
-                plan_id,
-                identity=identity,
-                max_depth=max_depth,
-                page_limit=page_limit,
-                include_front_matter=include_front_matter,
-            )
-            if plan_id
-            else plan_tree_pull(
+        lambda: _synchronize(
+            lambda: plan_tree_pull(
                 lark_cli or find_lark_cli(),
                 root_document_url,
                 directory,
@@ -166,7 +177,19 @@ def pull_tree(
                 max_depth=max_depth,
                 page_limit=page_limit,
                 include_front_matter=include_front_matter,
-            )
+            ),
+            lambda reviewed_id: apply_tree_pull(
+                lark_cli or find_lark_cli(),
+                root_document_url,
+                directory,
+                reviewed_id,
+                identity=identity,
+                max_depth=max_depth,
+                page_limit=page_limit,
+                include_front_matter=include_front_matter,
+            ),
+            dry_run=dry_run,
+            plan_id=plan_id,
         ),
         diagnostic,
     )
@@ -176,6 +199,7 @@ def push_tree(
     directory: str | Path,
     root_document_url: str | None = None,
     *,
+    dry_run: bool = False,
     plan_id: str | None = None,
     lark_cli: str | None = None,
     identity: str = "user",
@@ -183,27 +207,28 @@ def push_tree(
     page_limit: int = 10,
     diagnostic: Diagnostic | None = None,
 ) -> ApiResult:
-    """根据 front matter 或根 Wiki URL 预览或执行文档树推送。"""
+    """根据 front matter 或根 Wiki URL 推送文档树；dry_run=True 仅预览。"""
     return _run_quietly(
-        lambda: (
-            apply_tree_push(
-                lark_cli or find_lark_cli(),
-                directory,
-                plan_id,
-                identity=identity,
-                root_document_url=root_document_url,
-                max_depth=max_depth,
-                page_limit=page_limit,
-            )
-            if plan_id
-            else plan_tree_push(
+        lambda: _synchronize(
+            lambda: plan_tree_push(
                 lark_cli or find_lark_cli(),
                 directory,
                 identity=identity,
                 root_document_url=root_document_url,
                 max_depth=max_depth,
                 page_limit=page_limit,
-            )
+            ),
+            lambda reviewed_id: apply_tree_push(
+                lark_cli or find_lark_cli(),
+                directory,
+                reviewed_id,
+                identity=identity,
+                root_document_url=root_document_url,
+                max_depth=max_depth,
+                page_limit=page_limit,
+            ),
+            dry_run=dry_run,
+            plan_id=plan_id,
         ),
         diagnostic,
     )
