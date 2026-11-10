@@ -168,3 +168,23 @@ def test_image_marker_at_list_item_end(monkeypatch, tmp_path, after, duplicate):
         with pytest.raises(LarkCliError, match='唯一'):
             lark_cli.insert_local_image('cli', 'doc', tmp_path / 'a.png', 'IMAGE_MARKER', after=after)
         assert not calls
+
+
+def test_new_board_uses_document_size_and_marker_index(monkeypatch):
+    import json
+    import subprocess
+
+    from larkmd_sync import lark_cli
+    calls = []
+
+    def run(cli, args, **kwargs):
+        calls.append((args, kwargs))
+        data = ({'block': {'children': ['first', 'marker', 'last']}} if args[1] == 'GET'
+                else {'children': [{'board': {'token': 'T'}}]})
+        return subprocess.CompletedProcess(args, 0, json.dumps({'ok': True, 'data': data}), '')
+
+    monkeypatch.setattr(lark_cli, '_run', run)
+    assert lark_cli.create_sized_board('cli', 'D', 'marker', 820, 939) == 'T'
+    body = json.loads(calls[1][1]['stdin_data'])
+    assert body == {'index': 2, 'children': [
+        {'block_type': 43, 'board': {'width': 820, 'height': 939, 'align': 2}}]}

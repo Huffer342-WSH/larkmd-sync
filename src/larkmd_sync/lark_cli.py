@@ -707,3 +707,31 @@ def export_whiteboard_svg(
                 with contextlib.suppress(OSError):
                     temporary.unlink(missing_ok=True)
     return DownloadedMedia(content, ".svg")
+
+
+def create_sized_board(
+    lark_cli: str, document_id: str, after_block_id: str,
+    width: int, height: int, *, identity: str = "user",
+) -> str:
+    """Create a board after a top-level marker with explicit document dimensions."""
+    path = f"/open-apis/docx/v1/documents/{document_id}/blocks/{document_id}"
+    result = _run(lark_cli, ["api", "GET", path, "--as", identity, "--format", "json"])
+    value = _parse_json_output(result)
+    if not value.get("ok"):
+        raise _error("read_document_children", result, value)
+    children = value["data"]["block"].get("children", [])
+    if children.count(after_block_id) != 1:
+        raise LarkCliError("新画板占位不在文档顶层，拒绝猜测插入位置")
+    body = {"index": children.index(after_block_id) + 1, "children": [
+        {"block_type": 43, "board": {"width": width, "height": height, "align": 2}}
+    ]}
+    result = _run(lark_cli, ["api", "POST", path + "/children", "--data", "-",
+                             "--as", identity, "--format", "json"],
+                  stdin_data=json.dumps(body), timeout=180)
+    value = _parse_json_output(result)
+    if not value.get("ok"):
+        raise _error("create_sized_board", result, value)
+    created = value.get("data", {}).get("children", [])
+    if len(created) != 1 or not created[0].get("board", {}).get("token"):
+        raise LarkCliError("创建画板响应缺少 token；请读取远端检查后再继续")
+    return created[0]["board"]["token"]

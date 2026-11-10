@@ -786,7 +786,7 @@ def materialize_remote_resources(
                     bindings.update(old.get("bindings", {}))
                 bindings[document_id] = {"token": token, "baseline_hash": digest}
                 source = {
-                    "schema_version": 1, "type": "feishu-whiteboard", "nodes": nodes,
+                    "schema_version": 2, "type": "feishu-whiteboard",
                     "baseline_hash": digest, "bindings": bindings,
                     "origin_url": document_url, "preview_hash": _digest(preview.content),
                 }

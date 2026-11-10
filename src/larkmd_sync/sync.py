@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from .board_sync import _update, plan_boards, restore_and_bind, rewrite_keeping_boards
-from .core.board_assets import nodes_hash
+from .core.board_assets import svg_display_size, validate_metadata
 from .core.callouts import LocalCallout, callout_replacements, materialize_callouts
 from .core.doc_id import DocIdType, parse_doc_id
 from .core.heading_numbers import (
@@ -405,8 +405,10 @@ def _native_pull_conflicts(asset: LocalAsset) -> tuple[str, ...]:
         and not asset.path.is_symlink()
     ):
         previous = json.loads(asset.path.read_text())
-        if nodes_hash(previous["nodes"]) != previous.get("baseline_hash"):
-            return ("本地原生画板已修改，拉取会覆盖源数据；请先推送或解决冲突",)
+        try:
+            validate_metadata(previous)
+        except ValueError as exc:
+            return (str(exc),)
         # Before migrating JPG/PNG references to SVG, also protect edited old previews.
         svg = asset.path.with_suffix(".svg")
         if not svg.exists():
@@ -698,9 +700,11 @@ def _push_plan_internal(
     remote_other = tuple(
         asset.digest for asset in snapshot.assets if asset.role == "image"
     )
-    text_unchanged = text_unchanged and local_other == remote_other
+    text_unchanged = (text_unchanged and local_other == remote_other
+                      and not any(op.action == "create" for op in board_operations))
     text_updates = ()
-    if board_operations and not text_unchanged and local_other == remote_other:
+    if (board_operations and not text_unchanged and local_other == remote_other
+            and not any(op.action == "create" for op in board_operations)):
         edits = []
         before = snapshot.comparison_markdown.splitlines()
         after = local_resources.comparison_markdown.splitlines()
@@ -799,14 +803,14 @@ def _push_plan_internal(
             actions.append(
                 SyncAction(
                     action=op.action + "_native_board",
-                    local_path=str(op.image.board.path),
+                    local_path=str(op.image.path if op.action == "create" else op.image.board.path),
                     document_url=resolved_url,
                     remote_revision=remote_revision,
                 )
             )
             actions.append(
                 SyncAction(
-                    action="update_local_board_binding",
+                    action="write_local_board_source" if not op.image.board.value else "update_local_board_binding",
                     local_path=str(op.image.board.path),
                     document_url=resolved_url,
                 )
@@ -821,7 +825,13 @@ def _push_plan_internal(
     elif board_operations and any(op.block_id for op in board_operations):
         risks = ["保留原生画板块及 token，重建其余正文；多步操作失败时需检查实际进度"]
     if any(op.image.board.svg is not None for op in board_operations):
-        risks.append("修改的 SVG 将重建原画板节点；保留画板 token，但不保证原分组和连接绑定语义")
+        risks.append("SVG 将导入为原生画板节点；更新已有画板时保留 token，但不保证分组和连接绑定语义")
+    for op in board_operations:
+        if op.action == "create":
+            width, height = svg_display_size(op.image.path.read_text())
+            risks.append(f"新画板显示区域为 {width} × {height} px；实际宽度受文档页宽限制")
+        elif op.action in {"update", "remote_changed"}:
+            risks.append("保留已有画板块尺寸；若图形比例变化，请在飞书中调整画板显示区域")
     plan = SyncPlan(
         plan_id=_json_hash(payload),
         operation="push",
@@ -880,12 +890,6 @@ def _apply_prepared_push(
     identity: str,
 ) -> None:
     content = prepared.content
-    for op in prepared.board_operations:
-        if op.action == "create":
-            content = content.replace(
-                op.image.marker,
-                op.image.marker + '\n\n<whiteboard type="blank"></whiteboard>',
-            )
     document_id = prepared.document_id
     if prepared.board_operations and prepared.text_unchanged:
         pass
