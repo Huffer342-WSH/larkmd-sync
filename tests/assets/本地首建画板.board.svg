@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="736"
+     height="216"
+     viewBox="-8 -8 736 216">
+<g id="o1:1" transform="translate(12, 12)"><rect x="0" y="0" width="696" height="176" fill="#f5f7fa" stroke="none" stroke-width="0" rx="16" ry="16"/></g>
+<g id="o1:2" transform="translate(36, 58)"><rect x="0" y="0" width="180" height="82" fill="#e7efff" stroke="#245bdb" stroke-width="2" rx="10" ry="10"/></g>
+<g id="a1:1" transform="translate(82, 82.47)"><text font-size="20" font-family="Noto Sans SC" font-weight="normal" fill="#245bdb" text-anchor="middle" dominant-baseline="alphabetic" x="44"><tspan x="44" y="23.53"><tspan x="3.27" text-anchor="start">本地 SVG</tspan></tspan></text></g>
+<g id="c1:1" transform="translate(220, 99)"><path fill="none" stroke="#687384" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M 0 0 L 46 0"/></g>
+<g id="d1:1" transform="translate(252.5, 90.5)"><defs><symbol id="svgicon-d1-1" viewBox="0 0 16 17"><g transform="translate(-252.5 -90.5)"><polygon points="266,99 255,93 255,105" fill="#687384" /></g></symbol></defs><use href="#svgicon-d1-1" x="0" y="0" width="16" height="17"/></g>
+<g id="o1:3" transform="translate(270, 58)"><rect x="0" y="0" width="180" height="82" fill="#e9f7ed" stroke="#2ea121" stroke-width="2" rx="10" ry="10"/></g>
+<g id="a1:2" transform="translate(300, 82.47)"><text font-size="20" font-family="Noto Sans SC" font-weight="normal" fill="#267b26" text-anchor="middle" dominant-baseline="alphabetic" x="60"><tspan x="60" y="23.53"><tspan x="0" text-anchor="start">飞书原生画板</tspan></tspan></text></g>
+<g id="c1:2" transform="translate(454, 99)"><path fill="none" stroke="#687384" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M 0 0 L 46 0"/></g>
+<g id="d1:2" transform="translate(486.5, 90.5)"><defs><symbol id="svgicon-d1-2" viewBox="0 0 16 17"><g transform="translate(-486.5 -90.5)"><polygon points="500,99 489,93 489,105" fill="#687384" /></g></symbol></defs><use href="#svgicon-d1-2" x="0" y="0" width="16" height="17"/></g>
+<g id="o1:4" transform="translate(504, 58)"><rect x="0" y="0" width="180" height="82" fill="#fff3e3" stroke="#de7802" stroke-width="2" rx="10" ry="10"/></g>
+<g id="a1:3" transform="translate(534, 82.47)"><text font-size="20" font-family="Noto Sans SC" font-weight="normal" fill="#ad5d00" text-anchor="middle" dominant-baseline="alphabetic" x="60"><tspan x="60" y="23.53"><tspan x="0" text-anchor="start">建立同步映射</tspan></tspan></text></g>
+</svg>

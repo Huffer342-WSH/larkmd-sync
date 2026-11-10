@@ -8,3 +8,4 @@ dist/
 /tmp/
 .ref/
 testdata/
+tests/assets/*.board.json
