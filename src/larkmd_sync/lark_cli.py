@@ -19,6 +19,7 @@ from urllib.request import Request, urlopen
 from xml.sax.saxutils import quoteattr
 
 from .core.text_colors import restore_text_colors
+from .progress import report, waiting
 from .resources import (
     DownloadedMedia,
     WhiteboardSource,
@@ -44,16 +45,21 @@ def _run(
     cwd: str | Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     command = [lark_cli, *args]
+    label = " ".join(args[:2])
+    for flag in ("--doc", "--whiteboard-token"):
+        if flag in args:
+            label += " " + args[args.index(flag) + 1]
     try:
-        return subprocess.run(
-            command,
-            input=stdin_data,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-            cwd=cwd,
-        )
+        with waiting(label):
+            return subprocess.run(
+                command,
+                input=stdin_data,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+                cwd=cwd,
+            )
     except FileNotFoundError as exc:
         raise LarkCliError(f"lark-cli not found at: {lark_cli}") from exc
     except subprocess.TimeoutExpired as exc:
@@ -271,7 +277,7 @@ def download_image_url(url: str) -> DownloadedMedia:
     request = Request(url, headers={"User-Agent": "larkmd-sync/5"})
     limit = 25 * 1024 * 1024
     try:
-        with urlopen(request, timeout=60) as response:
+        with waiting(f"下载图片 {hostname}"), urlopen(request, timeout=60) as response:
             declared_size = response.headers.get("Content-Length")
             if declared_size and int(declared_size) > limit:
                 raise LarkCliError("remote image exceeds the 25 MiB safety limit")
@@ -670,6 +676,7 @@ def export_whiteboard_svg(
             if time.time() - cache_file.stat().st_mtime < 86400:
                 content = cache_file.read_bytes()
                 _validate_svg(content)
+                report(f"复用 SVG 缓存：{token}")
                 return DownloadedMedia(content, ".svg")
         except (OSError, ValueError, ET.ParseError):
             pass
@@ -691,6 +698,7 @@ def export_whiteboard_svg(
         except (LarkCliError, OSError, ValueError, ET.ParseError) as exc:
             transient = is_transient_error(exc)
             if transient and attempt < 3:
+                report(f"SVG 导出临时失败：{token}，{attempt}s 后重试（{attempt + 1}/3）")
                 time.sleep(attempt)
                 continue
             elapsed = time.monotonic() - started

@@ -1,6 +1,8 @@
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from larkmd_sync import compare_file, pull_file, push_file, push_tree, tree_status
 from larkmd_sync.resources import DownloadedMedia, WhiteboardSource
 from larkmd_sync.sync import apply_tree_pull, plan_tree_pull, resolve_document_url
@@ -680,3 +682,46 @@ def test_heading_number_roundtrip_uses_native_heading_attribute(tmp_path: Path) 
         assert '# 1. 章' not in uploaded[-1]
         assert '# Doc' not in uploaded[-1]
         assert replace.call_args.args[3] == '<h1 seq="auto">章</h1>'
+
+
+@pytest.mark.parametrize('fail_second', [False, True])
+def test_default_tree_pull_saves_each_page_before_reading_next(tmp_path, monkeypatch, fail_second):
+    from larkmd_sync import pull_tree
+    from larkmd_sync.lark_cli import LarkCliError
+
+    nodes = [({'title': '根页', 'obj_type': 'docx', 'node_token': 'root'}, ()),
+             ({'title': '子页', 'obj_type': 'docx', 'node_token': 'child'}, ('子页',))]
+    monkeypatch.setattr('larkmd_sync.sync._collect_wiki_nodes', lambda *a, **k: (nodes, []))
+    calls = []
+
+    def fetch(cli, url, **kwargs):
+        calls.append(url)
+        if len(calls) == 2:
+            assert (tmp_path / '根页.md').exists()
+            if fail_second:
+                raise LarkCliError('network failed')
+        return _markdown(content=f'# Page {len(calls)}\n')
+
+    monkeypatch.setattr('larkmd_sync.sync.fetch_markdown', fetch)
+    result = pull_tree(URL, tmp_path, lark_cli='unused')
+    assert len(calls) == 2
+    assert result.data.changed == (1 if fail_second else 2)
+    assert result.ok is (not fail_second)
+    assert (tmp_path / '根页.md').exists()
+    assert (tmp_path / '根页/子页.md').exists() is (not fail_second)
+    if fail_second:
+        assert '已保存 1 篇' in result.error
+
+
+def test_direct_pull_does_not_overwrite_file_edited_while_downloading(tmp_path, monkeypatch):
+    target = tmp_path / 'local.md'
+    target.write_text('before')
+
+    def fetch(*args, **kwargs):
+        target.write_text('concurrent local edit')
+        return _markdown()
+
+    monkeypatch.setattr('larkmd_sync.sync.fetch_markdown', fetch)
+    result = pull_file(target, URL, lark_cli='unused')
+    assert not result.ok and result.status == 409
+    assert target.read_text() == 'concurrent local edit'

@@ -58,6 +58,7 @@ from .models import (
     TreeStatus,
     TreeStatusItem,
 )
+from .progress import report
 from .resources import (
     LocalAsset,
     LocalImage,
@@ -293,6 +294,7 @@ def _fetch_snapshot(
     include_front_matter: bool,
 ) -> _RemoteSnapshot:
     canonical_url = _canonical_document_url(document_url)
+    report(f"读取文档：{canonical_url} → {target.name}")
     remote = fetch_markdown(
         lark_cli,
         canonical_url,
@@ -573,12 +575,14 @@ def apply_pull_file(
     lark_cli: str,
     document_url: str,
     markdown_file: str | Path,
-    plan_id: str,
+    plan_id: str | None = None,
     *,
     identity: str = "user",
     include_front_matter: bool = True,
 ) -> ApiResult[SyncApplyResult]:
     """重新校验计划并原子写入唯一的 Markdown 文件。"""
+    target = _absolute(markdown_file)
+    local_before = _file_hash(target)
     plan, snapshot = _pull_plan_internal(
         lark_cli,
         document_url,
@@ -586,7 +590,9 @@ def apply_pull_file(
         identity=identity,
         include_front_matter=include_front_matter,
     )
-    if plan.plan_id != plan_id:
+    if _file_hash(target) != local_before:
+        return ApiResult(ok=False, status=409, error="拉取期间本地文件已修改，拒绝覆盖")
+    if plan_id is not None and plan.plan_id != plan_id:
         return ApiResult(
             ok=False,
             status=409,
@@ -594,7 +600,7 @@ def apply_pull_file(
         )
     if plan.conflicts:
         return ApiResult(ok=False, status=409, error="；".join(plan.conflicts))
-    target = _absolute(markdown_file)
+    report(f"写入文档：{target}（{len(snapshot.assets)} 个资源）")
     for asset in snapshot.assets:
         _atomic_write(asset.path, asset.content)
     _atomic_write(target, snapshot.markdown.encode("utf-8"))
@@ -1158,6 +1164,7 @@ def _collect_wiki_nodes(
     max_depth: int | None,
     page_limit: int,
 ) -> tuple[list[tuple[dict[str, Any], tuple[str, ...]]], list[SyncWarning]]:
+    report(f"遍历 Wiki 文档树：{root_url}")
     root = get_wiki_node(lark_cli, root_url, identity=identity)
     space_id = str(root.get("space_id", ""))
     if not space_id:
@@ -1170,6 +1177,7 @@ def _collect_wiki_nodes(
             return
         if not parent.get("has_child"):
             return
+        report(f"读取子页面目录：{parent.get('title', parent.get('node_token', ''))}")
         children = list_wiki_children(
             lark_cli,
             space_id,
@@ -1192,6 +1200,7 @@ def _collect_wiki_nodes(
             walk(child, child_parents, depth + 1)
 
     walk(root, (), 0)
+    report(f"文档树遍历完成：{len(collected)} 个节点")
     return collected, warnings
 
 
@@ -1457,6 +1466,7 @@ def _tree_pull_plan_internal(
             relative = Path(root_name, *parent_segments, f"{leaf}.md")
             document_url = _wiki_url(root_url, node_token)
         target = root_dir / relative
+        report(f"页面 {index + 1}/{len(nodes)}：{node.get('title', node_token)}")
         snapshot = _fetch_snapshot(
             lark_cli,
             document_url,
@@ -1535,6 +1545,50 @@ def _tree_pull_plan_internal(
     return plan, documents
 
 
+def download_tree(
+    lark_cli: str, root_url: str, directory: str | Path, *, identity: str = "user",
+    max_depth: int | None = None, page_limit: int = 10, include_front_matter: bool = True,
+) -> ApiResult[SyncApplyResult]:
+    """Read and save each page once; retain completed files if a later page fails."""
+    root_dir = _absolute(directory)
+    nodes, warnings = _collect_wiki_nodes(
+        lark_cli, root_url, identity=identity, max_depth=max_depth, page_limit=page_limit)
+    root_name = _sanitize_filename(str(nodes[0][0].get("title") or "untitled"))
+    paths, urls, assets, page_plans = [], [], [], []
+
+    def completed():
+        return SyncApplyResult(
+            plan_id=_json_hash(page_plans), operation="tree_pull", changed=len(paths),
+            local_paths=tuple(paths), document_urls=tuple(urls),
+            assets_changed=len(assets), asset_paths=tuple(assets), warnings=tuple(warnings))
+
+    for index, (node, segments) in enumerate(nodes):
+        token = str(node.get("node_token", ""))
+        if node.get("obj_type") != "docx":
+            warnings.append(SyncWarning(code="unsupported_wiki_object",
+                message=f"跳过 {node.get('obj_type', 'unknown')} 节点：{node.get('title', token)}"))
+            continue
+        relative = (Path(f"{root_name}.md") if index == 0 else
+                    Path(root_name, *segments[:-1], f"{segments[-1]}.md"))
+        url = _canonical_document_url(root_url) if index == 0 else _wiki_url(root_url, token)
+        report(f"下载并保存 {index + 1}/{len(nodes)}：{node.get('title', token)}")
+        try:
+            result = apply_pull_file(lark_cli, url, root_dir / relative,
+                                    identity=identity, include_front_matter=include_front_matter)
+        except (LarkCliError, OSError, ValueError, RuntimeError) as exc:
+            result = ApiResult(ok=False, status=500, error=str(exc))
+        if not result.ok:
+            return ApiResult(ok=False, status=result.status, data=completed(),
+                error=f"拉取 {url} 失败：{result.error}；已保存 {len(paths)} 篇，失败页可能有部分资源已写入")
+        page = result.data
+        paths.extend(page.local_paths)
+        urls.extend(page.document_urls)
+        assets.extend(page.asset_paths)
+        warnings.extend(page.warnings)
+        page_plans.append(page.plan_id)
+    return ApiResult(ok=True, status=200, data=completed())
+
+
 def plan_tree_pull(
     lark_cli: str,
     root_url: str,
@@ -1588,7 +1642,8 @@ def apply_tree_pull(
     if plan.conflicts:
         return ApiResult(ok=False, status=409, error="；".join(plan.conflicts))
     root_dir = _absolute(directory)
-    for document in documents:
+    for index, document in enumerate(documents, 1):
+        report(f"写入 {index}/{len(documents)}：{document.relative_path}（{len(document.snapshot.assets)} 个资源）")
         for asset in document.snapshot.assets:
             _atomic_write(asset.path, asset.content)
         _atomic_write(

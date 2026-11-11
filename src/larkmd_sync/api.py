@@ -9,12 +9,14 @@ from pathlib import Path
 
 from .config import find_lark_cli
 from .lark_cli import LarkCliError
+from .progress import report, sink
 from .result import ApiResult
 from .sync import (
     apply_pull_file,
     apply_push_file,
     apply_tree_pull,
     apply_tree_push,
+    download_tree,
     plan_pull_file,
     plan_push_file,
     plan_tree_pull,
@@ -29,6 +31,7 @@ Diagnostic = Callable[[str], None]
 def _run_quietly(
     call: Callable[[], ApiResult], diagnostic: Diagnostic | None
 ) -> ApiResult:
+    token = sink.set(diagnostic)
     stdout = io.StringIO()
     stderr = io.StringIO()
     try:
@@ -40,6 +43,8 @@ def _run_quietly(
         result = ApiResult(ok=False, status=422, error=str(exc))
     except (LarkCliError, RuntimeError, OSError) as exc:
         result = ApiResult(ok=False, status=500, error=str(exc))
+    finally:
+        sink.reset(token)
     if diagnostic is not None:
         for line in (stdout.getvalue() + stderr.getvalue()).splitlines():
             if line.strip():
@@ -47,11 +52,14 @@ def _run_quietly(
     return result
 
 
-def _synchronize(plan, apply, *, dry_run: bool, plan_id: str | None) -> ApiResult:
+def _synchronize(plan, apply, *, dry_run: bool, plan_id: str | None, direct=None) -> ApiResult:
     if dry_run and plan_id is not None:
         raise ValueError("dry_run 与 plan_id 不能同时使用")
     if plan_id is not None:
         return apply(plan_id)
+    if not dry_run and direct is not None:
+        return direct()
+    report("读取当前状态并生成同步计划")
     preview = plan()
     if dry_run or not preview.ok:
         return preview
@@ -61,6 +69,7 @@ def _synchronize(plan, apply, *, dry_run: bool, plan_id: str | None) -> ApiResul
         problems.extend(w.message for w in proposed.warnings if w.blocking)
     if problems:
         return ApiResult(ok=False, status=409, data=proposed, error="；".join(problems))
+    report("计划检查通过，重新校验并执行同步")
     return apply(proposed.plan_id)
 
 
@@ -95,6 +104,9 @@ def pull_file(
             ),
             dry_run=dry_run,
             plan_id=plan_id,
+            direct=lambda: apply_pull_file(
+                lark_cli or find_lark_cli(), document_url, markdown_file,
+                identity=identity, include_front_matter=include_front_matter),
         ),
         diagnostic,
     )
@@ -190,6 +202,10 @@ def pull_tree(
             ),
             dry_run=dry_run,
             plan_id=plan_id,
+            direct=lambda: download_tree(
+                lark_cli or find_lark_cli(), root_document_url, directory,
+                identity=identity, max_depth=max_depth, page_limit=page_limit,
+                include_front_matter=include_front_matter),
         ),
         diagnostic,
     )

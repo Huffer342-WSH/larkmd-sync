@@ -79,7 +79,7 @@ export LARK_BASE_URL=https://tenant.feishu.cn
 
 从 1.x 升级到 2.0：同步命令和 Python API 默认直接执行。原先仅用于预览的调用必须增加 `--dry-run` / `dry_run=True`；删除旧命令中的 `--no-input`，并更新配套 Skill。
 
-Agent 调用统一添加 `--json`。stdout 只输出一个 schema `1` JSON，诊断信息写入 stderr。
+Agent 调用统一添加 `--json`。stdout 只输出一个 schema `1` JSON，诊断信息实时写入 stderr：包括文档树节点数、当前页面、资源请求及耗时。单次外部请求超过 10 秒时持续提示等待状态。Python API 未传 diagnostic 回调时保持静默。
 
 ### 单文档
 
@@ -94,7 +94,7 @@ larkmd-sync --json diff ./docs/design.md --doc "$URL"
 
 已有 front matter 映射时，push/diff 可以省略 `--doc`。`pull --no-front-matter` 只保存普通 Markdown，后续操作需继续传 URL。显式 URL 与文件映射不一致时拒绝执行。
 
-默认执行仍检查两端状态，有冲突或推送阻断警告时停止。`--dry-run` 返回计划而不执行同步；如需执行已查看的特定计划，使用 `--apply PLAN_ID`，不能同时传 `--dry-run`。计划过期时拒绝执行，不自动强制覆盖。
+默认拉取每篇只读取一次快照，文档树读取完一篇即保存一篇；后续页面失败会返回已保存路径。默认推送仍检查两端状态，有冲突或推送阻断警告时停止。`--dry-run` 仍读取远端正文和资源以生成计划，但不执行本地或远端同步写入；如需执行已查看的特定计划，使用 `--apply PLAN_ID`，不能同时传 `--dry-run`。计划过期时拒绝执行，不自动强制覆盖。
 
 ### Wiki 文档树
 

@@ -108,7 +108,7 @@ def test_json_validation_failure_stays_on_stdout(tmp_path: Path, capsys) -> None
     value = json.loads(captured.out)
     assert value["ok"] is False
     assert value["error"]["status"] == 422
-    assert captured.err == ""
+    assert "[larkmd-sync]" in captured.err
 
 
 

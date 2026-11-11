@@ -28,9 +28,7 @@ def test_missing_cli_returns_api_error(capsys) -> None:
 
 
 @pytest.mark.parametrize("name,plan_name,apply_name,args,operation", [
-    ("pull_file", "plan_pull_file", "apply_pull_file", ("local.md", "doc"), "pull"),
     ("push_file", "plan_push_file", "apply_push_file", ("local.md", "doc"), "push"),
-    ("pull_tree", "plan_tree_pull", "apply_tree_pull", ("doc", "local"), "tree_pull"),
     ("push_tree", "plan_tree_push", "apply_tree_push", ("local", "doc"), "tree_push"),
 ])
 def test_sync_defaults_to_apply_reviewed_plan(name, plan_name, apply_name, args, operation):
@@ -71,7 +69,8 @@ def test_default_pull_actually_writes_local_file(tmp_path):
 
     target = tmp_path / "local.md"
     remote = {"content": "# Remote\n\nHello\n", "document_id": "D", "revision_id": 1}
-    with patch("larkmd_sync.sync.fetch_markdown", return_value=remote):
+    with patch("larkmd_sync.sync.fetch_markdown", return_value=remote) as fetch:
         result = pull_file(target, "https://tenant.feishu.cn/docx/D", lark_cli="cli")
     assert result.ok and result.data.changed == 1
     assert "Hello" in target.read_text()
+    assert fetch.call_count == 1

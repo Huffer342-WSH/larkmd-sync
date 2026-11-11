@@ -6,6 +6,7 @@ import argparse
 import dataclasses
 import json
 import sys
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -203,6 +204,7 @@ def _normalize_global_args(argv: list[str]) -> list[str]:
 
 
 def _run(args: argparse.Namespace) -> ApiResult | object:
+    diagnostic = partial(print, file=sys.stderr, flush=True)
     if args.command == "pull":
         return pull_file(
             args.md_file,
@@ -212,7 +214,7 @@ def _run(args: argparse.Namespace) -> ApiResult | object:
             lark_cli=args.lark_cli,
             identity=args.identity,
             include_front_matter=not args.no_front_matter,
-            diagnostic=_diagnostic,
+            diagnostic=diagnostic,
         )
     if args.command == "push":
         return push_file(
@@ -222,7 +224,7 @@ def _run(args: argparse.Namespace) -> ApiResult | object:
             dry_run=args.dry_run,
             lark_cli=args.lark_cli,
             identity=args.identity,
-            diagnostic=_diagnostic,
+            diagnostic=diagnostic,
         )
     if args.command == "diff":
         return compare_file(
@@ -230,7 +232,7 @@ def _run(args: argparse.Namespace) -> ApiResult | object:
             args.doc,
             lark_cli=args.lark_cli,
             identity=args.identity,
-            diagnostic=_diagnostic,
+            diagnostic=diagnostic,
         )
     if args.command == "tree":
         if args.tree_command == "pull":
@@ -244,7 +246,7 @@ def _run(args: argparse.Namespace) -> ApiResult | object:
                 max_depth=args.max_depth,
                 page_limit=args.page_limit,
                 include_front_matter=not args.no_front_matter,
-                diagnostic=_diagnostic,
+                diagnostic=diagnostic,
             )
         if args.tree_command == "push":
             return push_tree(
@@ -256,7 +258,7 @@ def _run(args: argparse.Namespace) -> ApiResult | object:
                 identity=args.identity,
                 max_depth=args.max_depth,
                 page_limit=args.page_limit,
-                diagnostic=_diagnostic,
+                diagnostic=diagnostic,
             )
         return tree_status(
             args.directory,
@@ -265,7 +267,7 @@ def _run(args: argparse.Namespace) -> ApiResult | object:
             identity=args.identity,
             max_depth=args.max_depth,
             page_limit=args.page_limit,
-            diagnostic=_diagnostic,
+            diagnostic=diagnostic,
         )
 
     catalog = discover_builtin_skills(RESOURCE_PACKAGE)
