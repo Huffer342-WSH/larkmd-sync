@@ -55,6 +55,7 @@ larkmd-sync --json push ./文档.md --doc "$URL" --dry-run
 
 - 图片用独立一行的相对路径引用，素材放在 Markdown 同目录或子目录。
 - 新画板可以直接引用 `图名.board.svg`；首次成功上传自动生成 JSON。已有画板的 SVG 和 JSON 必须配对保留，不修改或删除同步元数据来绕过冲突。
+- 文档相对链接后的 `larkmd-link` 注释保存原始飞书地址，请保留；上传时自动恢复网络链接。
 - 自动编号标题保留显示序号和行末注释；编辑标题正文即可。
 - Mermaid 用代码块，高亮块用 `> [!NOTE]` 等 Markdown Alert。
 

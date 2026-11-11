@@ -1,18 +1,26 @@
-"""推送 Markdown 前移除本地元数据并转换本地文档链接。"""
+"""Markdown 本地元数据、文档链接往返和上传预处理。"""
 
 from __future__ import annotations
 
 import html
+import json
+import os
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
+
+from .doc_id import DocIdType, parse_doc_id
 
 _FRONT_MATTER_KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*):\s*(.*)$")
 _MARKDOWN_LINK_RE = re.compile(
-    r"(?<!!)\[([^\]\n]+)\]\(\s*(<[^>\n]+>|[^\s)]+)"
+    r"(?<![!\\])\[((?:\\.|[^\]\n])+)\]\(\s*(<[^>\n]+>|(?:[^\s()]|\([^\s()]*\))+)"
     r"(\s+(?:\"[^\"\n]*\"|'[^'\n]*'))?\s*\)"
+    r"(?:[ \t]*<!-- larkmd-link: (?P<metadata>.*?) -->)?"
 )
+_LINK_CODE_RE = re.compile(r"(?P<ticks>`+)(?!`)[\s\S]*?(?<!`)(?P=ticks)(?!`)")
+_LINK_COMMENT_RE = re.compile(r"<!--[\s\S]*?(?:-->|\Z)")
+_LINK_FENCE_RE = re.compile(r"^[ \t]{0,3}(?:>[ \t]*)*(`{3,}|~{3,})")
 _TABLE_SEPARATOR_RE = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$")
 _CHECKBOX_CELL_RE = re.compile(r"^\[(?P<mark>[ xX])\]$")
 _ORDERED_LIST_RE = re.compile(
@@ -85,37 +93,120 @@ def _target_document_url(
     return None
 
 
+def _rewrite_links(markdown: str, replace: Callable[[re.Match[str]], str]) -> str:
+    # Match comments and code against the original text so examples remain literal.
+    protected = [
+        m.span()
+        for pattern in (_LINK_CODE_RE, _LINK_COMMENT_RE)
+        for m in pattern.finditer(markdown)
+    ]
+    output = []
+    offset = 0
+    fence = None
+    for line in markdown.splitlines(keepends=True):
+        marker = _LINK_FENCE_RE.match(line)
+        if fence:
+            output.append(line)
+            if marker and marker[1][0] == fence[0] and len(marker[1]) >= len(fence):
+                if not line[marker.end() :].strip():
+                    fence = None
+        elif marker:
+            fence = marker[1]
+            output.append(line)
+        elif line.startswith(("    ", "\t")):
+            output.append(line)
+        else:
+
+            def safe_replace(match: re.Match[str]) -> str:
+                start = offset + match.start()
+                if any(a <= start < b for a, b in protected):
+                    return match[0]
+                return replace(match)
+
+            output.append(_MARKDOWN_LINK_RE.sub(safe_replace, line))
+        offset += len(line)
+    return "".join(output)
+
+
+def document_link_key(url: str) -> tuple[str, str, str] | None:
+    """Match document URLs without conflating tenants or Wiki/docx identities."""
+    parsed = parse_doc_id(url)
+    if parsed.type not in {DocIdType.WIKI, DocIdType.DOCX}:
+        return None
+    return urlsplit(url).netloc.lower(), parsed.type.value, parsed.token
+
+
+def localize_document_links(
+    markdown: str,
+    source_path: Path,
+    document_paths: Mapping[str, Path],
+) -> str:
+    targets: dict[tuple[str, str, str], set[Path]] = {}
+    for url, path in document_paths.items():
+        key = document_link_key(url)
+        if key:
+            targets.setdefault(key, set()).add(path)
+
+    def replace_link(match: re.Match[str]) -> str:
+        original = match[2].removeprefix("<").removesuffix(">")
+        paths = targets.get(document_link_key(original), set())
+        if len(paths) != 1:
+            return match[0]
+        relative = quote(
+            Path(os.path.relpath(next(iter(paths)), source_path.parent)).as_posix(),
+            safe="/",
+        )
+        fragment = urlsplit(original).fragment
+        destination = relative + ("#" + fragment if fragment else "")
+        metadata = json.dumps(
+            {"path": destination, "url": original}, ensure_ascii=False
+        ).replace("--", "\\u002d\\u002d")
+        return f"[{match[1]}]({destination}{match[3] or ''}) <!-- larkmd-link: {metadata} -->"
+
+    return _rewrite_links(markdown, replace_link)
+
+
 def rewrite_local_markdown_links(
     markdown: str,
     source_path: str | Path,
     *,
     document_urls: Mapping[Path, str] | None = None,
 ) -> str:
-    """把指向本地 Markdown 的普通链接改为目标文件声明的云文档 URL。"""
+    """Restore original remote targets before falling back to local file mappings."""
     source = Path(source_path).resolve()
-    result: list[str] = []
-    in_code_block = False
 
     def replace_link(match: re.Match[str]) -> str:
-        target_url = _target_document_url(
-            source,
-            match.group(2),
-            document_urls,
-        )
-        if not target_url:
-            return match.group(0)
-        return f"[{match.group(1)}]({target_url}{match.group(3) or ''})"
+        destination = match[2].removeprefix("<").removesuffix(">")
+        target_url = None
+        if match["metadata"] is not None:
+            try:
+                metadata = json.loads(match["metadata"])
+                if (
+                    not isinstance(metadata, dict)
+                    or not isinstance(metadata.get("path"), str)
+                    or not isinstance(metadata.get("url"), str)
+                    or document_link_key(metadata["url"]) is None
+                ):
+                    raise ValueError("invalid link metadata")
+            except (ValueError, TypeError) as exc:
+                raise ValueError("文档链接注释损坏，无法恢复原始飞书地址") from exc
+            if destination == metadata["path"]:
+                target_url = metadata["url"]
+        if target_url is None:
+            target_url = _target_document_url(source, destination, document_urls)
+            if target_url:
+                fragment = urlsplit(destination).fragment
+                if fragment:
+                    target_url = target_url.split("#", 1)[0] + "#" + fragment
+        if target_url is None:
+            return (
+                f"[{match[1]}]({match[2]}{match[3] or ''})"
+                if match["metadata"]
+                else match[0]
+            )
+        return f"[{match[1]}]({target_url}{match[3] or ''})"
 
-    for line in markdown.splitlines(keepends=True):
-        stripped = line.lstrip()
-        if stripped.startswith(("```", "~~~~")):
-            in_code_block = not in_code_block
-            result.append(line)
-            continue
-        result.append(
-            line if in_code_block else _MARKDOWN_LINK_RE.sub(replace_link, line)
-        )
-    return "".join(result)
+    return _rewrite_links(markdown, replace_link)
 
 
 def _split_table_row(line: str) -> list[str]:

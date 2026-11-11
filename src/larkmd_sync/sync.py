@@ -27,6 +27,7 @@ from .core.heading_numbers import (
 from .core.markdown_correction import correct_markdown
 from .core.ordered_lists import ordered_list_replacements
 from .core.preprocess import (
+    localize_document_links,
     preprocess_markdown,
     rewrite_interrupted_ordered_lists,
     split_front_matter,
@@ -292,6 +293,7 @@ def _fetch_snapshot(
     *,
     identity: str,
     include_front_matter: bool,
+    document_paths: Mapping[str, Path] | None = None,
 ) -> _RemoteSnapshot:
     canonical_url = _canonical_document_url(document_url)
     report(f"读取文档：{canonical_url} → {target.name}")
@@ -337,6 +339,8 @@ def _fetch_snapshot(
         str(remote.get("document_id", "")) or parse_doc_id(canonical_url).token
     )
     title = _extract_title(markdown, document_id)
+    if document_paths is not None:
+        markdown = localize_document_links(markdown, target, document_paths)
     if include_front_matter:
         markdown = _front_matter(title, canonical_url) + markdown.lstrip("\r\n")
     if markdown and not markdown.endswith("\n"):
@@ -478,14 +482,33 @@ def _pull_plan_internal(
     *,
     identity: str,
     include_front_matter: bool,
+    document_paths: Mapping[str, Path] | None = None,
 ) -> tuple[SyncPlan, _RemoteSnapshot]:
     target = _absolute(markdown_file)
+    if document_paths is None:
+        candidates: dict[str, set[Path]] = {}
+        for path in sorted(target.parent.glob("*")):
+            if path.suffix.lower() not in {".md", ".markdown"}:
+                continue
+            try:
+                url = _frontmatter_url(path)
+            except (OSError, UnicodeError):
+                continue
+            if url:
+                candidates.setdefault(url, set()).add(path)
+        candidates.setdefault(_canonical_document_url(document_url), set()).add(target)
+        document_paths = {
+            url: next(iter(paths))
+            for url, paths in candidates.items()
+            if len(paths) == 1
+        }
     snapshot = _fetch_snapshot(
         lark_cli,
         document_url,
         target,
         identity=identity,
         include_front_matter=include_front_matter,
+        document_paths=document_paths,
     )
     current_hash = _file_hash(target)
     asset_entries = [
@@ -579,6 +602,7 @@ def apply_pull_file(
     *,
     identity: str = "user",
     include_front_matter: bool = True,
+    document_paths: Mapping[str, Path] | None = None,
 ) -> ApiResult[SyncApplyResult]:
     """重新校验计划并原子写入唯一的 Markdown 文件。"""
     target = _absolute(markdown_file)
@@ -589,6 +613,7 @@ def apply_pull_file(
         markdown_file,
         identity=identity,
         include_front_matter=include_front_matter,
+        document_paths=document_paths,
     )
     if _file_hash(target) != local_before:
         return ApiResult(ok=False, status=409, error="拉取期间本地文件已修改，拒绝覆盖")
@@ -1419,6 +1444,33 @@ def _discover_hierarchy_documents(
     return root, documents, warnings, conflicts
 
 
+def _tree_document_paths(nodes, root_url: str, root_dir: Path) -> dict[str, Path]:
+    root_name = _sanitize_filename(str(nodes[0][0].get("title") or "untitled"))
+    aliases: dict[str, set[Path]] = {}
+    for index, (node, segments) in enumerate(nodes):
+        if node.get("obj_type") != "docx":
+            continue
+        relative = (
+            Path(f"{root_name}.md")
+            if index == 0
+            else Path(root_name, *segments[:-1], f"{segments[-1]}.md")
+        )
+        urls = [_wiki_url(root_url, str(node.get("node_token", "")))]
+        if index == 0:
+            urls.append(_canonical_document_url(root_url))
+        if node.get("obj_token"):
+            urls.append(
+                build_document_url(
+                    "docx",
+                    str(node["obj_token"]),
+                    base_url=base_url_from_document(root_url),
+                )
+            )
+        for url in urls:
+            aliases.setdefault(url, set()).add(root_dir / relative)
+    return {url: next(iter(paths)) for url, paths in aliases.items() if len(paths) == 1}
+
+
 def _tree_pull_plan_internal(
     lark_cli: str,
     root_url: str,
@@ -1437,6 +1489,7 @@ def _tree_pull_plan_internal(
         max_depth=max_depth,
         page_limit=page_limit,
     )
+    document_paths = _tree_document_paths(nodes, root_url, root_dir)
     root_name = _sanitize_filename(str(nodes[0][0].get("title") or "untitled"))
     documents: list[_TreeDocument] = []
     actions: list[SyncAction] = []
@@ -1473,6 +1526,7 @@ def _tree_pull_plan_internal(
             target,
             identity=identity,
             include_front_matter=include_front_matter,
+            document_paths=document_paths,
         )
         documents.append(_TreeDocument(relative, snapshot))
         conflicts.extend(_target_conflicts(target))
@@ -1553,6 +1607,7 @@ def download_tree(
     root_dir = _absolute(directory)
     nodes, warnings = _collect_wiki_nodes(
         lark_cli, root_url, identity=identity, max_depth=max_depth, page_limit=page_limit)
+    document_paths = _tree_document_paths(nodes, root_url, root_dir)
     root_name = _sanitize_filename(str(nodes[0][0].get("title") or "untitled"))
     paths, urls, assets, page_plans = [], [], [], []
 
@@ -1574,7 +1629,8 @@ def download_tree(
         report(f"下载并保存 {index + 1}/{len(nodes)}：{node.get('title', token)}")
         try:
             result = apply_pull_file(lark_cli, url, root_dir / relative,
-                                    identity=identity, include_front_matter=include_front_matter)
+                                    identity=identity, include_front_matter=include_front_matter,
+                                    document_paths=document_paths)
         except (LarkCliError, OSError, ValueError, RuntimeError) as exc:
             result = ApiResult(ok=False, status=500, error=str(exc))
         if not result.ok:
